@@ -1,0 +1,13 @@
+fastapi
+uvicorn[standard]
+python-dotenv
+pydantic
+
+langgraph
+langchain-openai
+langsmith
+
+qdrant-client
+mcp
+
+httpx
