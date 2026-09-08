@@ -1,10 +1,12 @@
-"""Stage-5 full workflow: branching, loops, and human-in-the-loop.
+"""Stage-6 full workflow: branching, loops, multimodality, and human-in-the-loop.
 
     intake --(mode: review | repo_match | unclear)-->
 
   review branch:
-    fetch_diff -> retrieve_style_context -> [analyze_file loop over files]
-    -> aggregate_review -> human_confirm --(approve|reject)--> post_comment | discard
+    fetch_diff --(has screenshots?)--> analyze_screenshots --> retrieve_style_context
+                \\----------------------------------------------/
+    retrieve_style_context -> [analyze_file loop over files] -> aggregate_review
+    -> human_confirm --(approve|reject)--> post_comment | discard
 
   repo_match branch:
     search_repos -> [score_repo loop over candidates] -> present_candidates
@@ -30,6 +32,7 @@ from backend.graph.nodes_repo_match import (
 from backend.graph.nodes_review import (
     aggregate_review,
     analyze_file,
+    analyze_screenshots,
     discard,
     fetch_diff,
     human_confirm,
@@ -37,6 +40,7 @@ from backend.graph.nodes_review import (
     retrieve_style_context,
     route_after_analyze_file,
     route_after_context,
+    route_after_fetch_diff,
     route_after_human_confirm,
 )
 from backend.graph.state import AgentState
@@ -46,6 +50,7 @@ _graph = StateGraph(AgentState)
 _graph.add_node("intake", intake)
 
 _graph.add_node("fetch_diff", fetch_diff)
+_graph.add_node("analyze_screenshots", analyze_screenshots)
 _graph.add_node("retrieve_style_context", retrieve_style_context)
 _graph.add_node("analyze_file", analyze_file)
 _graph.add_node("aggregate_review", aggregate_review)
@@ -67,7 +72,12 @@ _graph.add_conditional_edges(
 )
 
 # --- review branch ---
-_graph.add_edge("fetch_diff", "retrieve_style_context")
+_graph.add_conditional_edges(
+    "fetch_diff",
+    route_after_fetch_diff,
+    {"vision": "analyze_screenshots", "context": "retrieve_style_context"},
+)
+_graph.add_edge("analyze_screenshots", "retrieve_style_context")
 _graph.add_conditional_edges(
     "retrieve_style_context",
     route_after_context,

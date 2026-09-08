@@ -18,6 +18,9 @@ class AgentState(TypedDict, total=False):
     changed_files: int
     style_context: list[str]
 
+    image_urls: list[str]
+    image_analysis: list[str]
+
     file_diffs: list[dict]
     file_index: int
     review_comments: list[str]

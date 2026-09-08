@@ -4,6 +4,7 @@ python-dotenv
 pydantic
 
 langgraph
+langchain-core
 langchain-openai
 langsmith
 

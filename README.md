@@ -68,16 +68,20 @@ PYTHONPATH=. python -m backend.rag.ingest <owner> <repo>
 ```
 intake --(review | repo_match | unclear)-->
 
-review:      fetch_diff -> retrieve_style_context -> [analyze_file loop по файлам]
-             -> aggregate_review -> human_confirm --(approve|reject)--> post_comment | discard
+review:      fetch_diff --(есть скриншоты в описании PR?)--> analyze_screenshots ↘
+                                                                                    retrieve_style_context
+             fetch_diff ------------------------------------------------------------------------------↗
+             retrieve_style_context -> [analyze_file loop по файлам] -> aggregate_review
+             -> human_confirm --(approve|reject)--> post_comment | discard
 
 repo_match:  search_repos -> [score_repo loop по кандидатам] -> present_candidates
              -> human_select --(выбор|skip)--> fetch_good_first_issues | конец
 ```
 
-- **Ветвление**: `intake` классифицирует свободный текст (structured output, gpt-4o-mini) и определяет, какая ветка выполняется.
+- **Ветвление**: `intake` классифицирует свободный текст (structured output, gpt-4o-mini) и определяет, какая ветка выполняется; внутри review-ветки — есть ли изображения в описании PR.
 - **Циклы**: `analyze_file` обходит файлы PR по одному (до 10), `score_repo` считает fit-score для каждого репозитория-кандидата.
 - **Human-in-the-loop**: `human_confirm` и `human_select` останавливают граф через `langgraph.types.interrupt()` и ждут реального ответа человека, прежде чем публиковать комментарий в GitHub или переходить к issue выбранного репозитория.
+- **Мультимодальность**: `analyze_screenshots` (`backend/graph/vision.py`) находит скриншоты/GIF в описании PR (markdown-синтаксис, `<img>`, известные asset-хосты GitHub) и анализирует их через vision gpt-4o-mini — находки попадают в финальный ревью-комментарий.
 
 Запуск (интерактивно, с реальным вводом в терминале на шаге human-in-the-loop):
 

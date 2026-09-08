@@ -1,9 +1,12 @@
+import asyncio
+
 from langchain_openai import ChatOpenAI
 from langgraph.types import interrupt
 
 from backend.graph.mcp_client import call_tool
 from backend.graph.schemas import FileReviewOutput
 from backend.graph.state import AgentState
+from backend.graph.vision import analyze_image, extract_image_urls
 from backend.rag.retrieve import retrieve_context
 
 STYLE_CONTEXT_QUERY = "contribution guidelines, coding conventions, and code style requirements"
@@ -36,7 +39,18 @@ async def fetch_diff(state: AgentState) -> dict:
         "file_diffs": files,
         "file_index": 0,
         "review_comments": [],
+        "image_urls": extract_image_urls(pr.get("body")),
     }
+
+
+def route_after_fetch_diff(state: AgentState) -> str:
+    return "vision" if state.get("image_urls") else "context"
+
+
+async def analyze_screenshots(state: AgentState) -> dict:
+    urls = state["image_urls"]
+    descriptions = await asyncio.gather(*(analyze_image(url) for url in urls))
+    return {"image_analysis": [f"{url}: {desc}" for url, desc in zip(urls, descriptions)]}
 
 
 async def retrieve_style_context(state: AgentState) -> dict:
@@ -92,6 +106,11 @@ async def aggregate_review(state: AgentState) -> dict:
         )
     else:
         summary = f"Reviewed {changed} file(s). No issues found."
+
+    image_notes = state.get("image_analysis") or []
+    if image_notes:
+        summary += "\n\nScreenshot/attachment analysis:\n" + "\n".join(f"- {n}" for n in image_notes)
+
     return {"summary": summary}
 
 
