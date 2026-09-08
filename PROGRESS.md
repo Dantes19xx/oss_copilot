@@ -20,7 +20,19 @@ git -c credential.helper= push "https://x-access-token:${GITHUB_PERSONAL_ACCESS_
 git fetch origin   # чтобы синхронизировать локальный tracking ref origin/main
 ```
 
-**Следующий шаг (этап 2 из PLAN.md раздел 8):** MCP-сервер — базовые read-only tool'ы поверх GitHub API (`get_pr_diff`, `search_github_repos`) в `backend/mcp_server/`.
+## 2026-09-08
+
+- [x] Этап 2 (MCP-сервер): `backend/mcp_server/github_client.py` (тонкая обёртка над GitHub REST API) + `backend/mcp_server/server.py` с тремя read-only tool'ами:
+  - `get_pr_diff(owner, repo, pr_number)` — diff + метаданные PR
+  - `search_github_repos(query, limit)` — поиск репозиториев-кандидатов
+  - `get_repo_health(owner, repo)` — CONTRIBUTING.md, good-first-issues, активность, лицензия
+  Все три протестированы вживую против реального GitHub API (flask, requests, поиск по topic) и через полный MCP-протокол (`list_tools`/`call_tool`) — работают.
+
+**Важно (для следующей сессии):** установленный пакет `mcp` — версии 2.x, там `FastMCP` переименован в `MCPServer` (`from mcp.server.mcpserver import MCPServer`), API идентичен по духу (`@mcp.tool()`, `.run()`, `.list_tools()`, `.call_tool()`). Если где-то в коде/примерах видите `from mcp.server.fastmcp import FastMCP` — это устаревший (mcp 1.x) синтаксис, не работает с установленной версией.
+
+Локальный venv для бэкенда: `.venv/` в корне проекта (в `.gitignore`, не коммитится). Установка: `pip install -r backend/requirements.txt`. Тестовые скрипты запускать с `PYTHONPATH=.` из корня репозитория (иначе `ModuleNotFoundError: No module named 'backend'`).
+
+**Следующий шаг (этап 3 из PLAN.md раздел 8):** LangGraph — happy path без ветвлений: простой review одного diff'а от начала до конца (использует `get_pr_diff` из MCP-сервера).
 
 **Открытые вопросы (не блокируют, но влияют на детали):**
 - Auth в MVP: пока допущение — без auth, single-user PAT.
