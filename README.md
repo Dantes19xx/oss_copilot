@@ -91,6 +91,10 @@ PYTHONPATH=. python -m backend.graph.run_agent "Review the pull request https://
 PYTHONPATH=. python -m backend.graph.run_agent "I know Python and want to contribute to a CLI tool"
 ```
 
+### Skill
+
+`.claude/skills/code-review-checklist/SKILL.md` — тот же чек-лист ревью (баги, безопасность, тесты, breaking changes, конвенции проекта), что использует `analyze_file` в графе, но упакованный как Claude Skill: подхватывается в любой Claude Code сессии по триггерам вроде "review this PR", "code review this diff", независимо от того, подключён ли этот репозиторий к агенту. Одна и та же формулировка стандарта — не две расходящиеся копии.
+
 ## Статус
 
 Проект в активной разработке. Архитектурная документация (ARCHITECTURE.md) и результаты evals (EVALS.md) появятся по мере реализации соответствующих этапов — см. PLAN.md, раздел 8.
