@@ -10,5 +10,7 @@ class ReviewState(TypedDict, total=False):
     pr_diff: str
     changed_files: int
 
+    style_context: list[str]
+
     review_comments: list[str]
     summary: str

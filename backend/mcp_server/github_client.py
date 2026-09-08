@@ -1,5 +1,6 @@
 """Thin async wrapper around the GitHub REST API used by the MCP tools."""
 
+import base64
 import os
 
 import httpx
@@ -60,6 +61,16 @@ class GitHubClient:
             return True
         except GitHubError:
             return False
+
+    async def get_file_content(self, owner: str, repo: str, path: str) -> str | None:
+        try:
+            response = await self._get(f"/repos/{owner}/{repo}/contents/{path}")
+        except GitHubError:
+            return None
+        data = response.json()
+        if data.get("encoding") != "base64":
+            return None
+        return base64.b64decode(data["content"]).decode("utf-8", errors="replace")
 
     async def count_good_first_issues(self, owner: str, repo: str) -> int:
         response = await self._get(

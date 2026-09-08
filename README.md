@@ -39,6 +39,23 @@ pip install -r backend/requirements.txt
 PYTHONPATH=. python -m backend.mcp_server.server
 ```
 
+### RAG-пайплайн
+
+`backend/rag/` — индексация README/CONTRIBUTING.md репозитория в Qdrant, чтобы ревью PR учитывало конвенции конкретного проекта.
+
+- Chunking: по markdown-заголовкам, с fallback на фиксированные окна в 500 токенов (overlap 50) для длинных секций (`chunking.py`, `tiktoken`)
+- Embeddings: `text-embedding-3-small`
+- Vector DB: Qdrant, одна коллекция `repo_docs` с фильтрацией по `repo` в payload
+
+Индексация репозитория:
+
+```bash
+docker-compose up -d qdrant
+PYTHONPATH=. python -m backend.rag.ingest <owner> <repo>
+```
+
+После этого `backend/graph/graph.py` автоматически подтягивает релевантный контекст в узле `retrieve_style_context` перед ревью. Если документы для репозитория не проиндексированы, граф не падает — просто ревьюит без грaундинга.
+
 ## Статус
 
 Проект в активной разработке. Архитектурная документация (ARCHITECTURE.md) и результаты evals (EVALS.md) появятся по мере реализации соответствующих этапов — см. PLAN.md, раздел 8.

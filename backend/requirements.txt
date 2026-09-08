@@ -9,5 +9,7 @@ langsmith
 
 qdrant-client
 mcp
+tiktoken
+openai
 
 httpx
