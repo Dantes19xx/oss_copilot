@@ -62,6 +62,28 @@ def route_after_context(state: AgentState) -> str:
     return "analyze" if state.get("file_diffs") else "skip"
 
 
+async def review_file(filename: str, status: str, patch: str, context: list[str] | None = None) -> FileReviewOutput:
+    """The actual per-file review call — used by the graph node below AND by
+    backend/evals/run_evals.py, so evals score the real production prompt/model, not a
+    reimplementation of it."""
+    context = context or []
+    context_block = (
+        "\n\n".join(f"[project doc excerpt {i + 1}]\n{c}" for i, c in enumerate(context))
+        if context
+        else "(no project documentation indexed for this repo)"
+    )
+    llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.2).with_structured_output(FileReviewOutput)
+    return await llm.ainvoke(
+        [
+            ("system", FILE_REVIEW_SYSTEM_PROMPT),
+            (
+                "human",
+                f"File: {filename} ({status})\n\nProject conventions:\n{context_block}\n\nPatch:\n{patch}",
+            ),
+        ]
+    )
+
+
 async def analyze_file(state: AgentState) -> dict:
     files = state["file_diffs"]
     index = state["file_index"]
@@ -70,24 +92,7 @@ async def analyze_file(state: AgentState) -> dict:
 
     patch = file.get("patch")
     if patch:
-        context = state.get("style_context") or []
-        context_block = (
-            "\n\n".join(f"[project doc excerpt {i + 1}]\n{c}" for i, c in enumerate(context))
-            if context
-            else "(no project documentation indexed for this repo)"
-        )
-        llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.2).with_structured_output(FileReviewOutput)
-        result: FileReviewOutput = await llm.ainvoke(
-            [
-                ("system", FILE_REVIEW_SYSTEM_PROMPT),
-                (
-                    "human",
-                    f"File: {file['filename']} ({file['status']})\n\n"
-                    f"Project conventions:\n{context_block}\n\n"
-                    f"Patch:\n{patch}",
-                ),
-            ]
-        )
+        result = await review_file(file["filename"], file["status"], patch, state.get("style_context"))
         comments.extend(f"{file['filename']}: {c}" for c in result.comments)
 
     return {"review_comments": comments, "file_index": index + 1}
