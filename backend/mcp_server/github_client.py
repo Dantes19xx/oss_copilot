@@ -33,6 +33,13 @@ class GitHubClient:
             raise GitHubError(f"GitHub API {path} failed: {response.status_code} {response.text[:300]}")
         return response
 
+    async def _post(self, path: str, *, json: dict) -> httpx.Response:
+        async with httpx.AsyncClient(base_url=GITHUB_API_URL, headers=self._headers, timeout=20) as client:
+            response = await client.post(path, json=json)
+        if response.status_code >= 400:
+            raise GitHubError(f"GitHub API {path} failed: {response.status_code} {response.text[:300]}")
+        return response
+
     async def get_pull_request(self, owner: str, repo: str, pr_number: int) -> dict:
         response = await self._get(f"/repos/{owner}/{repo}/pulls/{pr_number}")
         return response.json()
@@ -81,3 +88,27 @@ class GitHubClient:
             },
         )
         return response.json().get("total_count", 0)
+
+    async def search_good_first_issues(self, owner: str, repo: str, limit: int = 5) -> list[dict]:
+        response = await self._get(
+            "/search/issues",
+            params={
+                "q": f'repo:{owner}/{repo} is:issue is:open label:"good first issue"',
+                "per_page": limit,
+            },
+        )
+        return response.json().get("items", [])
+
+    async def get_pull_request_files(self, owner: str, repo: str, pr_number: int, limit: int = 10) -> list[dict]:
+        response = await self._get(
+            f"/repos/{owner}/{repo}/pulls/{pr_number}/files",
+            params={"per_page": limit},
+        )
+        return response.json()
+
+    async def create_issue_comment(self, owner: str, repo: str, issue_number: int, body: str) -> dict:
+        response = await self._post(
+            f"/repos/{owner}/{repo}/issues/{issue_number}/comments",
+            json={"body": body},
+        )
+        return response.json()

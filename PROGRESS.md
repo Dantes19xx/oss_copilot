@@ -54,7 +54,30 @@ git fetch origin   # чтобы синхронизировать локальн�
 - Reranker (опциональный пункт ТЗ 2.2) пока не реализован — сознательно отложен, не блокирует обязательный чек-лист.
 - `requirements.txt` дополнен: `tiktoken`, `openai` (использовались и раньше транзитивно через `langchain-openai`/`mcp`, теперь используются напрямую и указаны явно).
 
-**Следующий шаг (этап 5 из PLAN.md раздел 8):** доработать граф до полной версии — ветвления (intake: review vs repo-matching), циклы (analyze_file по файлам diff'а, score_repo по кандидатам), human-in-the-loop (`human_confirm` перед `post_pr_comment`). Это закрывает обязательное требование ТЗ 2.1 по многошаговому workflow с условной логикой.
+## 2026-09-08 (этап 5)
+
+- [x] Этап 5 (полный граф — ветвления, циклы, human-in-the-loop): реструктурировал `backend/graph/` в модули:
+  - `schemas.py` — `IntakeOutput`, `FileReviewOutput` (pydantic, structured output)
+  - `state.py` — единый `AgentState` на обе ветки
+  - `nodes_intake.py` — `intake` классифицирует свободный текст (gpt-4o-mini, structured output) в `review` (owner/repo/pr_number, парсит PR-ссылку) / `repo_match` (строит GitHub search query из навыков/интересов) / `unclear`
+  - `nodes_review.py` — `fetch_diff` (теперь также тянет `get_pr_files`) → `retrieve_style_context` → **цикл** `analyze_file` (по файлам PR, до 10, ревью каждого файла отдельным вызовом LLM) → `aggregate_review` → **HITL** `human_confirm` (`langgraph.types.interrupt()`) → `post_comment` (реальный вызов `post_pr_comment`) | `discard`
+  - `nodes_repo_match.py` — `search_repos` → **цикл** `score_repo` (health-метрики + fit-score по каждому кандидату) → `present_candidates` → **HITL** `human_select` → `fetch_good_first_issues` | конец
+  - `graph.py` — один `StateGraph(AgentState)`, `compile(checkpointer=InMemorySaver())` (checkpointer обязателен для `interrupt`/`Command(resume=...)`)
+  - `run_agent.py` — интерактивный CLI: `ainvoke` → если в результате есть `"__interrupt__"` → печатает payload, читает `input()`, резюмирует через `Command(resume=answer)`, повторяет до финального ответа. Заменил старые `nodes.py`/`run_review.py` (удалены).
+  - Добавлены MCP-инструменты: `get_pr_files`, `post_pr_comment` (write), `get_good_first_issues` (+ в `github_client.py`: `get_pull_request_files`, `create_issue_comment`, `search_good_first_issues`, новый `_post` helper).
+- **Проверено вживую end-to-end, оба ветвления:**
+  - `unclear` — свободный текст без PR/интересов → корректное сообщение, без ошибок.
+  - `review` (`pallets/flask#5918`, реальный PR): intake распарсил URL, цикл `analyze_file` прошёл 5 файлов (5 отдельных LLM-вызовов), `human_confirm` прервал граф и дождался реального ввода в терминале, `reject` → `discard` сработал корректно.
+  - `post_pr_comment` (write) протестирован на **собственном** тестовом issue в `Dantes19xx/oss_copilot` (issue #1, создан и закрыт после теста) — сознательно не стал постить в чужой `pallets/flask`, чтобы не спамить реальных мейнтейнеров.
+  - `repo_match` ("I know Python and want to contribute to a CLI tool"): intake построил query `language:Python topic:CLI stars:>100`, `score_repo` прошёл цикл по 5 кандидатам, `human_select` прервал граф, резюмирован вводом "1" → `fetch_good_first_issues` вернул реальный issue из `yt-dlp/yt-dlp`.
+
+**Важно (для следующей сессии):**
+- **Стало известное "грабли":** если в текущем bash-сеансе раньше делали `set -a; source .env; set +a`, переменные остаются экспортированными в shell. `load_dotenv()` по умолчанию НЕ перезаписывает уже установленные os.environ переменные — поэтому Python-процесс может использовать устаревший токен из shell, а не свежий из `.env`, даже после правки файла. Исправлено на уровне кода: все `load_dotenv()` в проекте теперь вызываются с `override=True` (`mcp_server/server.py`, `graph/run_agent.py`, `rag/ingest.py`) — `.env` всегда побеждает. При ручном тестировании в новом bash-сеансе это не проявляется.
+- `post_pr_comment` требует у `GITHUB_PERSONAL_ACCESS_TOKEN` право **Issues: Read and write** (отдельно от Contents) — пользователь это добавил. Изменение права на GitHub может применяться не мгновенно (наблюдалась задержка ~1-2 минуты).
+- `InMemorySaver` — checkpointer только в памяти процесса; для реального бэкенда (FastAPI, несколько запросов/перезапуски) понадобится персистентный checkpointer (Postgres/SQLite) — пока не нужно, отметить на этапе деплоя (этап 15 PLAN.md).
+- `analyze_file` ограничен `MAX_FILES=10` файлов на PR — осознанный бюджет по стоимости/времени, не баг.
+
+**Следующий шаг (этап 6 из PLAN.md раздел 8):** мультимодальность — vision-анализ скриншотов/диаграмм, приложенных к PR/issue (закрывает обязательное требование ТЗ 2.2).
 
 **Открытые вопросы (не блокируют, но влияют на детали):**
 - Auth в MVP: пока допущение — без auth, single-user PAT.

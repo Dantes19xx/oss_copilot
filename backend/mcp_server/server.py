@@ -1,9 +1,13 @@
 """OSS Copilot MCP server.
 
-Exposes read-only GitHub tools used by the LangGraph agent:
+Exposes GitHub tools used by the LangGraph agent:
 - get_pr_diff: fetch a pull request's diff and metadata for review
+- get_pr_files: fetch a pull request's per-file patches (for a file-by-file review loop)
+- post_pr_comment: post a review comment to a pull request (write — only call after
+  human confirmation; the graph gates this behind a human-in-the-loop step)
 - search_github_repos: find candidate repositories to contribute to
 - get_repo_health: contribution-friendliness signals for a repository
+- get_good_first_issues: list open good-first-issue candidates for a repository
 
 Run with: python -m backend.mcp_server.server (stdio transport)
 """
@@ -13,7 +17,7 @@ from mcp.server.mcpserver import MCPServer
 
 from backend.mcp_server.github_client import GitHubClient
 
-load_dotenv()
+load_dotenv(override=True)
 
 mcp = MCPServer("oss-copilot-github")
 
@@ -35,6 +39,46 @@ async def get_pr_diff(owner: str, repo: str, pr_number: int) -> dict:
         "head": pr.get("head", {}).get("ref"),
         "diff": diff,
     }
+
+
+@mcp.tool()
+async def get_pr_files(owner: str, repo: str, pr_number: int, limit: int = 10) -> list[dict]:
+    """Fetch per-file patches for a pull request, for a file-by-file review loop."""
+    client = GitHubClient()
+    files = await client.get_pull_request_files(owner, repo, pr_number, limit=limit)
+    return [
+        {
+            "filename": f.get("filename"),
+            "status": f.get("status"),
+            "additions": f.get("additions"),
+            "deletions": f.get("deletions"),
+            "patch": f.get("patch"),
+        }
+        for f in files
+    ]
+
+
+@mcp.tool()
+async def post_pr_comment(owner: str, repo: str, pr_number: int, body: str) -> dict:
+    """Post a comment to a pull request. WRITE action — call only after human approval."""
+    client = GitHubClient()
+    comment = await client.create_issue_comment(owner, repo, pr_number, body)
+    return {"id": comment.get("id"), "html_url": comment.get("html_url")}
+
+
+@mcp.tool()
+async def get_good_first_issues(owner: str, repo: str, limit: int = 5) -> list[dict]:
+    """List open issues labeled 'good first issue' for a repository."""
+    client = GitHubClient()
+    issues = await client.search_good_first_issues(owner, repo, limit=limit)
+    return [
+        {
+            "number": i.get("number"),
+            "title": i.get("title"),
+            "html_url": i.get("html_url"),
+        }
+        for i in issues
+    ]
 
 
 @mcp.tool()
