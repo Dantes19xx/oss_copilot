@@ -95,6 +95,12 @@ PYTHONPATH=. python -m backend.graph.run_agent "I know Python and want to contri
 
 `.claude/skills/code-review-checklist/SKILL.md` — тот же чек-лист ревью (баги, безопасность, тесты, breaking changes, конвенции проекта), что использует `analyze_file` в графе, но упакованный как Claude Skill: подхватывается в любой Claude Code сессии по триггерам вроде "review this PR", "code review this diff", независимо от того, подключён ли этот репозиторий к агенту. Одна и та же формулировка стандарта — не две расходящиеся копии.
 
-## Статус
+### Мониторинг (LangSmith)
+
+Все LLM-вызовы трейсятся в LangSmith — включены через `.env` (`LANGSMITH_TRACING=true`, `LANGSMITH_API_KEY`, `LANGSMITH_PROJECT`), без дополнительного кода для вызовов через `langchain_openai.ChatOpenAI` (review, vision, intake-классификация). Одно исключение: `langchain_openai.OpenAIEmbeddings`/сырой `openai` SDK не трейсятся LangSmith автоматически (это не `Runnable`) — поэтому `backend/rag/embeddings.py` явно оборачивает вызов декоратором `@traceable(run_type="embedding")` из пакета `langsmith`, чтобы embeddings не оставались слепой зоной.
+
+Дашборд: `https://smith.langchain.com` → проект `oss_copilot`. Каждый запуск графа (`ainvoke`) создаёт корневой трейс `LangGraph` с дочерними спанами по узлам и LLM-вызовам. Human-in-the-loop сценарий (review с `human_confirm`, repo_match с `human_select`) технически состоит из двух отдельных `ainvoke()` — до прерывания и после `Command(resume=...)` — которые попадают в LangSmith как два трейса, но оба помечены одним `thread_id` в метаданных рана; фильтр по `metadata.thread_id` в дашборде показывает полный путь одного пользовательского сценария от начала до публикации/отклонения.
+
+### Skill
 
 Проект в активной разработке. Архитектурная документация (ARCHITECTURE.md) и результаты evals (EVALS.md) появятся по мере реализации соответствующих этапов — см. PLAN.md, раздел 8.

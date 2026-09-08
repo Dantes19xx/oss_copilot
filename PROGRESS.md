@@ -95,7 +95,19 @@ git fetch origin   # чтобы синхронизировать локальн�
 - Структуру сверил с реально установленными skills на этой машине (`~/.claude` проекты `restaurant_search`, `notes/my_own_notes`) — минимальный frontmatter (только `name`+`description`, без `version`/`license`/`tags`) валиден, это подтверждённый паттерн, не догадка.
 - Осознанное решение: **не дублировать текст между Skill и промптом графа** отдельным шаблонизатором/импортом — они намеренно держатся в ручной синхронизации как одна и та же формулировка стандарта в двух местах доставки (агент и интерактивная Claude Code сессия). Более сложная связка (например, граф читает `SKILL.md` как источник промпта) — возможное будущее улучшение, не обязательное для чек-листа ТЗ.
 
-**Следующий шаг (этап 8 из PLAN.md раздел 8):** LangSmith — трейсинг всех LLM-вызовов, дашборд. Закрывает обязательное требование ТЗ 2.3 по мониторингу.
+## 2026-09-08 (этап 8)
+
+- [x] Этап 8 (LangSmith): подтвердил, что трейсинг работает "из коробки" для всех `langchain_openai.ChatOpenAI` вызовов (граф, vision, intake) — достаточно `.env` (`LANGSMITH_TRACING=true`, `LANGSMITH_API_KEY`, `LANGSMITH_PROJECT=oss_copilot`), уже настроенных с этапа 1. Никакого доп. кода не понадобилось для chat-вызовов.
+- **Нашёл слепую зону и закрыл её**: `langchain_openai.OpenAIEmbeddings`/сырой `openai` SDK НЕ трейсятся LangSmith автоматически — это не `Runnable`, а прямой вызов клиента (проверил исходник `OpenAIEmbeddings.aembed_documents` — там нет ни `@traceable`, ни callback-менеджера). Сначала попробовал переключить `backend/rag/embeddings.py` на `langchain_openai.OpenAIEmbeddings` — не помогло (трейс не появился). Откатил на сырой `openai.AsyncOpenAI` + обернул вызов декоратором `@traceable(run_type="embedding", name="text-embedding-3-small")` из пакета `langsmith` — трейс появился, проверено через `Client().list_runs(project_name="oss_copilot")`.
+- **Проверено вживую через LangSmith API** (не только "должно работать"): прогнал review-сценарий и retrieval-вызов, затем запросом `langsmith.Client().list_runs(project_name="oss_copilot")` увидел реальные записи — по узлам графа (`chain`), по LLM (`llm | ChatOpenAI`), по embeddings (`embedding | text-embedding-3-small`), с корневым `LangGraph` run на каждый `ainvoke()`.
+- **Полезная находка для защиты**: у каждого рана в `extra.metadata` автоматически проставлен `thread_id` (из `config.configurable.thread_id`, который передаёт `run_agent.py`) и `revision_id` (текущий git commit SHA, LangSmith сам подхватил git). Human-in-the-loop сценарий технически делится на 2 `ainvoke()`-вызова (до `interrupt()` и после `Command(resume=...)`) — это 2 отдельных root-трейса в LangSmith, но с одинаковым `thread_id`, так что фильтр по `metadata.thread_id` в дашборде склеивает их в один пользовательский сценарий для демонстрации.
+
+**Важно (для следующей сессии):**
+- Если добавлять новые прямые вызовы `openai`/другого не-LangChain SDK — не забывать `@traceable`, иначе будет тихая слепая зона в мониторинге (как было с embeddings).
+- `list_runs()`/`get_run_url()` в установленной версии `langsmith` (0.12.2) помечены deprecated в пользу `client.runs.query()`/`client.runs.get_url()` — работают, но при следующей крупной правке кода вокруг LangSmith стоит свериться с актуальным API.
+- Дашборд для защиты: `smith.langchain.com` → проект `oss_copilot`, там уже реальные трейсы со всех прогонов этой сессии (review, repo_match, vision, retrieval).
+
+**Следующий шаг (этап 9 из PLAN.md раздел 8):** golden dataset (≥30 примеров) + автоматизированный прогон evals с ≥2 метриками. Закрывает обязательное требование ТЗ 2.3.
 
 **Открытые вопросы (не блокируют, но влияют на детали):**
 - Auth в MVP: пока допущение — без auth, single-user PAT.
