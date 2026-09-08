@@ -127,9 +127,59 @@ PYTHONPATH=. python -m backend.evals.run_evals
 
 Prints a summary to stdout and writes `backend/evals/results.json`.
 
-## 7. A/B experiment
+A/B experiment: `PYTHONPATH=. python -m backend.evals.run_ab` — writes
+`backend/evals/ab_results.json`.
 
-Not yet run — tracked as the next stage in [PROGRESS.md](PROGRESS.md) (PLAN.md §8,
-stage 10). Will compare two configurations (candidates per PLAN.md §10: gpt-4o-mini vs.
-gpt-4o, or review with vs. without RAG-retrieved style context) on this same golden
-dataset and metrics, with a stated hypothesis and a decision recorded here.
+## 7. A/B experiment: gpt-4o-mini vs. gpt-4o
+
+**Hypothesis:** gpt-4o-mini gives review quality close enough to gpt-4o on this task
+that the cost/latency difference isn't worth paying for — i.e. the model choice already
+made for the project (gpt-4o-mini, PLAN.md §2.4) is empirically justified, not just
+assumed from general reputation.
+
+**Setup:** `backend/evals/run_ab.py` runs `review_file()` — the same production
+function `run_evals.py` uses — over the identical 30-example golden dataset, once with
+`model="gpt-4o-mini"`, once with `model="gpt-4o"`, temperature 0.2 for both, same judge
+(gpt-4o-mini, same prompt as §3) grading both arms so the grading itself isn't a
+variable. Cost is computed from actual per-call token usage (`usage_metadata` on the raw
+model response) × published per-token pricing; latency is wall-clock per call.
+
+**Results (n=30 each, run 2026-09-08):**
+
+| Metric | gpt-4o-mini | gpt-4o |
+|---|---|---|
+| Accuracy | 0.87 | **0.90** |
+| Precision | 0.85 | **0.91** |
+| Recall | **1.00** | 0.95 |
+| Mean judge score | **4.13** | 4.07 |
+| Mean latency | **1.31s** | 2.18s |
+| Mean cost/call | **$0.0001** | $0.0017 |
+| Total cost (30 calls) | **$0.0022** | $0.0518 |
+
+**Findings:**
+
+- gpt-4o edges out gpt-4o-mini on raw detection accuracy (0.90 vs 0.87) and precision
+  (0.91 vs 0.85) — it's a bit less prone to flagging clean diffs.
+- But on the metric that actually measures review *quality* — the LLM-as-judge score —
+  gpt-4o-mini is marginally **higher** (4.13 vs 4.07), not lower. The stronger model
+  doesn't produce better-reasoned comments here.
+- gpt-4o-mini has **perfect recall (1.00)**; gpt-4o misses one real issue
+  (`bug-05`, a loop-variable-shadowing bug) that gpt-4o-mini catches. For a code-review
+  tool, missing a real bug is worse than one extra false positive on a clean diff — so
+  gpt-4o's precision edge doesn't clearly outweigh gpt-4o-mini's recall edge.
+- gpt-4o-mini is **~23x cheaper** ($0.0022 vs $0.0518 for the same 30 calls) and
+  **~40% faster** (1.31s vs 2.18s mean latency) per file reviewed.
+
+**Decision:** keep gpt-4o-mini as the production model (already the default in
+`review_file()` / `analyze_file`). The accuracy/precision gap gpt-4o showed is real but
+small, doesn't show up in judge-graded quality, and doesn't outweigh a 23x cost
+difference and a recall regression on a task where missing a real issue is the more
+costly failure mode. Revisit if the golden dataset grows enough to make the 0.87 vs 0.90
+accuracy gap statistically meaningful, or if a specific category (not seen here) turns
+out to need the stronger model.
+
+**What this experiment doesn't show:** n=30 is small enough that a few examples flipping
+either way would change which model "wins" on accuracy/precision — this is a first
+signal, not a statistically powered result. Both models were graded by the same
+gpt-4o-mini judge (see §3's self-grading caveat), so a systematic bias in the judge
+would affect both arms' judge scores in the same direction rather than cancel out.

@@ -1,4 +1,5 @@
 import asyncio
+import time
 
 from langchain_openai import ChatOpenAI
 from langgraph.types import interrupt
@@ -62,26 +63,46 @@ def route_after_context(state: AgentState) -> str:
     return "analyze" if state.get("file_diffs") else "skip"
 
 
-async def review_file(filename: str, status: str, patch: str, context: list[str] | None = None) -> FileReviewOutput:
+async def review_file(
+    filename: str,
+    status: str,
+    patch: str,
+    context: list[str] | None = None,
+    model: str = "gpt-4o-mini",
+    return_usage: bool = False,
+) -> FileReviewOutput | tuple[FileReviewOutput, dict]:
     """The actual per-file review call — used by the graph node below AND by
-    backend/evals/run_evals.py, so evals score the real production prompt/model, not a
-    reimplementation of it."""
+    backend/evals/run_evals.py + run_ab.py, so evals score the real production
+    prompt, not a reimplementation of it. `model` and `return_usage` exist for the A/B
+    harness (backend/evals/run_ab.py) to swap models and capture cost/latency; the
+    production node below never passes them, so its behavior is unchanged."""
     context = context or []
     context_block = (
         "\n\n".join(f"[project doc excerpt {i + 1}]\n{c}" for i, c in enumerate(context))
         if context
         else "(no project documentation indexed for this repo)"
     )
-    llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.2).with_structured_output(FileReviewOutput)
-    return await llm.ainvoke(
-        [
-            ("system", FILE_REVIEW_SYSTEM_PROMPT),
-            (
-                "human",
-                f"File: {filename} ({status})\n\nProject conventions:\n{context_block}\n\nPatch:\n{patch}",
-            ),
-        ]
-    )
+    messages = [
+        ("system", FILE_REVIEW_SYSTEM_PROMPT),
+        (
+            "human",
+            f"File: {filename} ({status})\n\nProject conventions:\n{context_block}\n\nPatch:\n{patch}",
+        ),
+    ]
+    llm = ChatOpenAI(model=model, temperature=0.2)
+
+    if not return_usage:
+        return await llm.with_structured_output(FileReviewOutput).ainvoke(messages)
+
+    start = time.monotonic()
+    raw_result = await llm.with_structured_output(FileReviewOutput, include_raw=True).ainvoke(messages)
+    elapsed_s = time.monotonic() - start
+    usage = raw_result["raw"].usage_metadata or {}
+    return raw_result["parsed"], {
+        "latency_s": elapsed_s,
+        "input_tokens": usage.get("input_tokens", 0),
+        "output_tokens": usage.get("output_tokens", 0),
+    }
 
 
 async def analyze_file(state: AgentState) -> dict:
