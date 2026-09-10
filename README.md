@@ -101,6 +101,17 @@ PYTHONPATH=. python -m backend.graph.run_agent "I know Python and want to contri
 
 Дашборд: `https://smith.langchain.com` → проект `oss_copilot`. Каждый запуск графа (`ainvoke`) создаёт корневой трейс `LangGraph` с дочерними спанами по узлам и LLM-вызовам. Human-in-the-loop сценарий (review с `human_confirm`, repo_match с `human_select`) технически состоит из двух отдельных `ainvoke()` — до прерывания и после `Command(resume=...)` — которые попадают в LangSmith как два трейса, но оба помечены одним `thread_id` в метаданных рана; фильтр по `metadata.thread_id` в дашборде показывает полный путь одного пользовательского сценария от начала до публикации/отклонения.
 
-### Skill
+### Evals, A/B, гиперпараметры
 
-Проект в активной разработке. Архитектурная документация (ARCHITECTURE.md) и результаты evals (EVALS.md) появятся по мере реализации соответствующих этапов — см. PLAN.md, раздел 8.
+Golden dataset (30 примеров), автоматизированные evals (accuracy + LLM-as-judge), A/B (gpt-4o-mini vs gpt-4o) и эксперимент по temperature — в [EVALS.md](EVALS.md).
+
+### Guardrails
+
+`backend/graph/guardrails.py` — PR-диффы и описания приходят от произвольных внешних контрибьюторов, это untrusted input, который течёт прямо в промпт:
+
+- **Prompt injection**: `FILE_REVIEW_SYSTEM_PROMPT` явно инструктирует модель не выполнять команды, встреченные внутри diff'а/описания PR. Дополнительно `scan_for_prompt_injection()` (`fetch_diff`) детектирует известные паттерны ("ignore all previous instructions", "system prompt", "you are now" и т.п.) по заголовку, описанию и патчам каждого файла — при срабатывании `human_confirm` добавляет явный `security_warning` в HITL-запрос, чтобы подозрительный PR не был одобрен вслепую.
+- **Утечка секретов**: `redact_secrets()` вырезает похожие на секреты подстроки (OpenAI/GitHub/Stripe/AWS-паттерны) из финального текста комментария в `aggregate_review`, до того как он попадёт человеку на подтверждение или в публичный PR — даже когда ревью корректно указывает на хардкод секрета, сам секрет в комментарий не попадает.
+
+## Статус
+
+Проект в активной разработке. Архитектурная документация (ARCHITECTURE.md) появится по мере реализации соответствующих этапов — см. PLAN.md, раздел 8.

@@ -20,6 +20,7 @@ class AgentState(TypedDict, total=False):
 
     image_urls: list[str]
     image_analysis: list[str]
+    injection_warnings: list[str]
 
     file_diffs: list[dict]
     file_index: int
