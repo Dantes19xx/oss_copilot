@@ -63,19 +63,35 @@ def route_after_context(state: AgentState) -> str:
     return "analyze" if state.get("file_diffs") else "skip"
 
 
+FILE_REVIEW_TEMPERATURE = 0.0
+# 0.0 chosen over 0.2/0.7 empirically (backend/evals/run_temperature.py, see EVALS.md
+# stage-11 section): identical accuracy/judge-score to 0.2 and strictly better
+# reproducibility (0.7 showed measurable comment-count variance across repeats; 0.0/0.2
+# didn't) — no quality cost, and determinism is worth more than free-seeming randomness
+# for a tool whose output gets posted to a real PR.
+FILE_REVIEW_MAX_TOKENS = 500
+# Chosen from real usage_metadata across 60 live review_file() calls (stage 9 evals +
+# stage 10 A/B run): output_tokens ranged 4-125, mean 53.8 — 500 gives >4x headroom
+# over the observed worst case as a runaway-generation safety net, never a real limit.
+# top_p is intentionally left at the API default (1.0) rather than also tuned — OpenAI's
+# own guidance is to vary temperature OR top_p, not both; see EVALS.md stage-11 section.
+
+
 async def review_file(
     filename: str,
     status: str,
     patch: str,
     context: list[str] | None = None,
     model: str = "gpt-4o-mini",
+    temperature: float = FILE_REVIEW_TEMPERATURE,
     return_usage: bool = False,
 ) -> FileReviewOutput | tuple[FileReviewOutput, dict]:
     """The actual per-file review call — used by the graph node below AND by
-    backend/evals/run_evals.py + run_ab.py, so evals score the real production
-    prompt, not a reimplementation of it. `model` and `return_usage` exist for the A/B
-    harness (backend/evals/run_ab.py) to swap models and capture cost/latency; the
-    production node below never passes them, so its behavior is unchanged."""
+    backend/evals/run_evals.py + run_ab.py + run_temperature.py, so evals score the real
+    production prompt, not a reimplementation of it. `model`, `temperature`, and
+    `return_usage` exist for those eval harnesses to swap configs and capture
+    cost/latency; the production node below never passes them, so its behavior is
+    unchanged."""
     context = context or []
     context_block = (
         "\n\n".join(f"[project doc excerpt {i + 1}]\n{c}" for i, c in enumerate(context))
@@ -89,7 +105,7 @@ async def review_file(
             f"File: {filename} ({status})\n\nProject conventions:\n{context_block}\n\nPatch:\n{patch}",
         ),
     ]
-    llm = ChatOpenAI(model=model, temperature=0.2)
+    llm = ChatOpenAI(model=model, temperature=temperature, max_tokens=FILE_REVIEW_MAX_TOKENS)
 
     if not return_usage:
         return await llm.with_structured_output(FileReviewOutput).ainvoke(messages)

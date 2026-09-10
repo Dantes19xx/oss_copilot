@@ -183,3 +183,56 @@ either way would change which model "wins" on accuracy/precision — this is a f
 signal, not a statistically powered result. Both models were graded by the same
 gpt-4o-mini judge (see §3's self-grading caveat), so a systematic bias in the judge
 would affect both arms' judge scores in the same direction rather than cancel out.
+
+## 8. Hyperparameters: temperature, max_tokens, top_p
+
+`backend/evals/run_temperature.py` — same golden dataset and judge as above, applied to
+one hyperparameter directly (ТЗ 2.4: "Подбор температуры, top_p, max_tokens - с
+экспериментальным обоснованием").
+
+**Temperature.** Two things were measured, deliberately kept separate: quality (does the
+review get better or worse) and consistency (does the same input keep producing the same
+verdict). A single quality metric can look identical at two temperatures while one is
+quietly far less reproducible — which matters more for a tool that posts its output to a
+real PR than one extra accuracy point would.
+
+| Temperature | Accuracy | Judge score | Verdict stability (3 repeats, n=6) | Comment-count stdev |
+|---|---|---|---|---|
+| 0.0 | 0.90 | 4.20 | 1.00 | 0.000 |
+| 0.2 | 0.90 | 4.20 | 1.00 | 0.000 |
+| 0.7 | 0.90 | **4.00** | 1.00 | **0.079** |
+
+Accuracy was identical across all three (0.90) on the 30-example set. 0.7 scored lower
+on the judge (4.00 vs 4.20) and showed measurable comment-count variance across repeats
+of the same 6 examples (0.0 and 0.2 had zero variance — byte-identical verdicts and
+comment counts every repeat). Note the verdict itself (flag vs. don't-flag) never
+flipped even at 0.7 in this sample — the instability was in exactly *how many* comments
+came back, not whether an issue was caught.
+
+**Decision:** switched the production default from 0.2 to **0.0**
+(`FILE_REVIEW_TEMPERATURE` in `backend/graph/nodes_review.py`). 0.0 tied 0.2 on both
+quality metrics and matched it on reproducibility, so there's no measured quality cost —
+and 0.0 gives the strongest determinism guarantee available, which is worth more than
+0.2's unrealized potential for variety on a task where "same diff in, same verdict out"
+is a property worth having. This was a real change made because of the data, not a
+post-hoc justification for the number already in use.
+
+**max_tokens = 500.** Not swept as a range — instead measured from real usage. Across
+60 live `review_file()` calls already made for stage 9 (evals) and stage 10 (A/B),
+`output_tokens` ranged 4-125 with a mean of 53.8 (see `backend/evals/ab_results.json`).
+500 gives >4x headroom over the observed worst case: a safety net against a pathological
+runaway generation, not a real constraint on any output seen so far.
+
+**top_p** was left at the API default (1.0), not tuned. OpenAI's own guidance is to
+adjust temperature *or* top_p, not both — sweeping both would confound whichever
+sampling axis actually caused an observed change. Temperature was chosen as the one axis
+to tune since it's the more commonly documented lever and the one already exposed as a
+parameter in `review_file()`.
+
+**Scope note:** this experiment covers `review_file()` only (the highest-volume, most
+evaluable LLM call in the project). `nodes_intake.intake()` already uses temperature=0
+for the same determinism reason (classifying/extracting structured routing info, not
+open-ended writing) — consistent with this finding, not separately re-tested.
+`vision.analyze_image()` keeps temperature=0.2, since describing an image is a more
+open-ended task where some phrasing variation is acceptable; it hasn't been tuned with
+its own experiment and that's a documented gap, not a claim that 0.2 was measured there.
