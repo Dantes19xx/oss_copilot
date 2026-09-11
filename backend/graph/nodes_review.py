@@ -1,9 +1,11 @@
 import asyncio
+import hashlib
 import time
 
 from langchain_openai import ChatOpenAI
 from langgraph.types import interrupt
 
+from backend.graph.cache import FileCache
 from backend.graph.guardrails import redact_secrets, scan_for_prompt_injection
 from backend.graph.mcp_client import call_tool
 from backend.graph.schemas import FileReviewOutput
@@ -134,7 +136,18 @@ async def review_file(
     }
 
 
+_review_cache = FileCache("review_file")
+_review_prompt_version = hashlib.sha256(FILE_REVIEW_SYSTEM_PROMPT.encode()).hexdigest()[:12]
+# Included in the cache key so editing FILE_REVIEW_SYSTEM_PROMPT invalidates old
+# entries automatically instead of silently serving comments from a stale prompt.
+
+
 async def analyze_file(state: AgentState) -> dict:
+    """Caches review_file()'s result (comments only) keyed on everything that could
+    change the answer: the file identity/content, the RAG style-context passed in, and
+    the current prompt. Only this production call site is cached — backend/evals/*.py
+    call review_file() directly and always get a fresh model call, since eval runs need
+    real per-run behavior (see backend/graph/cache.py docstring)."""
     files = state["file_diffs"]
     index = state["file_index"]
     file = files[index]
@@ -142,8 +155,23 @@ async def analyze_file(state: AgentState) -> dict:
 
     patch = file.get("patch")
     if patch:
-        result = await review_file(file["filename"], file["status"], patch, state.get("style_context"))
-        comments.extend(f"{file['filename']}: {c}" for c in result.comments)
+        context = state.get("style_context") or []
+        cache_key = (
+            _review_prompt_version,
+            "gpt-4o-mini",
+            FILE_REVIEW_TEMPERATURE,
+            file["filename"],
+            file["status"],
+            patch,
+            context,
+        )
+
+        async def _compute() -> list[str]:
+            result = await review_file(file["filename"], file["status"], patch, context)
+            return result.comments
+
+        cached_comments = await _review_cache.get_or_compute(cache_key, _compute)
+        comments.extend(f"{file['filename']}: {c}" for c in cached_comments)
 
     return {"review_comments": comments, "file_index": index + 1}
 
