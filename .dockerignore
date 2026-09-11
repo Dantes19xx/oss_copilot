@@ -1,0 +1,13 @@
+.git/
+.venv/
+venv/
+__pycache__/
+*.pyc
+.cache/
+.idea/
+.vscode/
+node_modules/
+qdrant_storage/
+.env
+.env.local
+frontend/

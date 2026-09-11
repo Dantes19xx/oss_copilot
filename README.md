@@ -23,7 +23,13 @@ cp .env.example .env   # заполнить реальными ключами
 docker-compose up
 ```
 
-Backend будет доступен на `http://localhost:8000/health`, Qdrant — на `http://localhost:6333`.
+Backend будет доступен на `http://localhost:8000/health`, Qdrant — на `http://localhost:6333`. FastAPI пока expose'ит только health-check — сам граф вызывается через CLI (см. ниже), HTTP-API появится на этапе фронтенда (PLAN.md, этап 13). Проверить граф внутри уже собранного контейнера:
+
+```bash
+docker compose exec backend python -m backend.graph.run_agent "Review the pull request https://github.com/owner/repo/pull/123"
+```
+
+Сборка образа собирается из корня репозитория (не из `backend/`) — чтобы `backend.*` импорты внутри контейнера резолвились так же, как при локальном запуске с `PYTHONPATH=.`. Внутри compose-сети backend обращается к Qdrant по имени сервиса (`QDRANT_URL=http://qdrant:6333`, переопределяется поверх `.env`).
 
 ### MCP-сервер
 
