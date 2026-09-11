@@ -121,6 +121,12 @@ Golden dataset (30 примеров), автоматизированные evals
 
 Проверено вживую: повторный прогон одного и того же PR — 7 вызовов OpenAI на холодном кэше → 1 вызов (только intake-классификация) на тёплом.
 
+### Fallback между моделями
+
+`backend/graph/nodes_review.py` (`_review_with_fallback`) — если primary-модель (gpt-4o-mini) не отвечает за `PRIMARY_TIMEOUT_S=20s` или падает с retryable-ошибкой (`RateLimitError`, `APITimeoutError`, `APIConnectionError`, `InternalServerError`), граф переключается на gpt-4o для этого файла. Осознанно НЕ ловим `AuthenticationError`/`BadRequestError`/`NotFoundError` — это признак реальной проблемы конфигурации (обе модели используют один и тот же ключ), которую fallback не решит, а только скроет.
+
+Проверено вживую: принудительно занизил таймаут primary до 0.001с (реальный timeout против живого API), граф поймал `OpenAITimeoutError` и успешно переключился на gpt-4o, вернув валидный комментарий.
+
 ## Статус
 
 Проект в активной разработке. Архитектурная документация (ARCHITECTURE.md) появится по мере реализации соответствующих этапов — см. PLAN.md, раздел 8.

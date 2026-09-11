@@ -1,7 +1,9 @@
 import asyncio
 import hashlib
+import logging
 import time
 
+import openai
 from langchain_openai import ChatOpenAI
 from langgraph.types import interrupt
 
@@ -100,13 +102,15 @@ async def review_file(
     model: str = "gpt-4o-mini",
     temperature: float = FILE_REVIEW_TEMPERATURE,
     return_usage: bool = False,
+    timeout: float | None = None,
 ) -> FileReviewOutput | tuple[FileReviewOutput, dict]:
     """The actual per-file review call — used by the graph node below AND by
     backend/evals/run_evals.py + run_ab.py + run_temperature.py, so evals score the real
-    production prompt, not a reimplementation of it. `model`, `temperature`, and
-    `return_usage` exist for those eval harnesses to swap configs and capture
-    cost/latency; the production node below never passes them, so its behavior is
-    unchanged."""
+    production prompt, not a reimplementation of it. `model`, `temperature`,
+    `return_usage`, and `timeout` exist for those eval harnesses and for
+    _review_with_fallback below to swap configs and capture cost/latency; the graph
+    node calls that matter for normal operation never override them, so behavior there
+    is unchanged."""
     context = context or []
     context_block = (
         "\n\n".join(f"[project doc excerpt {i + 1}]\n{c}" for i, c in enumerate(context))
@@ -120,7 +124,7 @@ async def review_file(
             f"File: {filename} ({status})\n\nProject conventions:\n{context_block}\n\nPatch:\n{patch}",
         ),
     ]
-    llm = ChatOpenAI(model=model, temperature=temperature, max_tokens=FILE_REVIEW_MAX_TOKENS)
+    llm = ChatOpenAI(model=model, temperature=temperature, max_tokens=FILE_REVIEW_MAX_TOKENS, timeout=timeout)
 
     if not return_usage:
         return await llm.with_structured_output(FileReviewOutput).ainvoke(messages)
@@ -136,6 +140,46 @@ async def review_file(
     }
 
 
+PRIMARY_MODEL = "gpt-4o-mini"
+FALLBACK_MODEL = "gpt-4o"
+PRIMARY_TIMEOUT_S = 20.0
+# Generous for normal traffic, but short enough that a genuinely overloaded primary
+# fails fast into the fallback rather than the caller waiting through two full default
+# timeouts back to back. See PROGRESS.md stage 14 for the live test that forced this
+# path with an artificially short timeout.
+
+_RETRYABLE_ERRORS = (
+    openai.RateLimitError,
+    openai.APITimeoutError,
+    openai.APIConnectionError,
+    openai.InternalServerError,
+)
+# Deliberately NOT AuthenticationError/BadRequestError/NotFoundError: those mean a real
+# configuration or request problem (both models share the same API key/account), and
+# silently swapping models would hide the actual bug instead of surfacing it — falling
+# back only makes sense for transient/availability failures.
+
+logger = logging.getLogger(__name__)
+
+
+async def _review_with_fallback(
+    filename: str, status: str, patch: str, context: list[str], primary_timeout: float = PRIMARY_TIMEOUT_S
+) -> list[str]:
+    try:
+        result = await review_file(filename, status, patch, context, model=PRIMARY_MODEL, timeout=primary_timeout)
+    except _RETRYABLE_ERRORS as e:
+        logger.warning(
+            "primary model %s failed reviewing %s (%s: %s) — falling back to %s",
+            PRIMARY_MODEL,
+            filename,
+            type(e).__name__,
+            e,
+            FALLBACK_MODEL,
+        )
+        result = await review_file(filename, status, patch, context, model=FALLBACK_MODEL)
+    return result.comments
+
+
 _review_cache = FileCache("review_file")
 _review_prompt_version = hashlib.sha256(FILE_REVIEW_SYSTEM_PROMPT.encode()).hexdigest()[:12]
 # Included in the cache key so editing FILE_REVIEW_SYSTEM_PROMPT invalidates old
@@ -143,11 +187,14 @@ _review_prompt_version = hashlib.sha256(FILE_REVIEW_SYSTEM_PROMPT.encode()).hexd
 
 
 async def analyze_file(state: AgentState) -> dict:
-    """Caches review_file()'s result (comments only) keyed on everything that could
-    change the answer: the file identity/content, the RAG style-context passed in, and
-    the current prompt. Only this production call site is cached — backend/evals/*.py
-    call review_file() directly and always get a fresh model call, since eval runs need
-    real per-run behavior (see backend/graph/cache.py docstring)."""
+    """Caches the review result (comments only) keyed on everything that could change
+    the answer: the file identity/content, the RAG style-context passed in, and the
+    current prompt. Only this production call site is cached — backend/evals/*.py call
+    review_file() directly and always get a fresh model call, since eval runs need real
+    per-run behavior (see backend/graph/cache.py docstring). Fallback (PRIMARY_MODEL ->
+    FALLBACK_MODEL on a retryable failure) happens inside the cached compute, so a
+    fallback result gets cached too — no point re-triggering the same failure+fallback
+    dance on a retry of an unchanged file."""
     files = state["file_diffs"]
     index = state["file_index"]
     file = files[index]
@@ -158,7 +205,8 @@ async def analyze_file(state: AgentState) -> dict:
         context = state.get("style_context") or []
         cache_key = (
             _review_prompt_version,
-            "gpt-4o-mini",
+            PRIMARY_MODEL,
+            FALLBACK_MODEL,
             FILE_REVIEW_TEMPERATURE,
             file["filename"],
             file["status"],
@@ -167,8 +215,7 @@ async def analyze_file(state: AgentState) -> dict:
         )
 
         async def _compute() -> list[str]:
-            result = await review_file(file["filename"], file["status"], patch, context)
-            return result.comments
+            return await _review_with_fallback(file["filename"], file["status"], patch, context)
 
         cached_comments = await _review_cache.get_or_compute(cache_key, _compute)
         comments.extend(f"{file['filename']}: {c}" for c in cached_comments)
