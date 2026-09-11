@@ -111,6 +111,10 @@ PYTHONPATH=. python -m backend.graph.run_agent "I know Python and want to contri
 
 Golden dataset (30 примеров), автоматизированные evals (accuracy + LLM-as-judge), A/B (gpt-4o-mini vs gpt-4o) и эксперимент по temperature — в [EVALS.md](EVALS.md).
 
+### CI/CD
+
+`.github/workflows/ci.yml` — на каждый PR и push в `main`: job `smoke-test` (импорт ключевых модулей) → job `evals` (полный прогон `backend.evals.run_evals` на golden dataset, результат — build artifact `eval-results`). Нужен только секрет `OPENAI_API_KEY` (репозиторий не трогает GitHub API или Qdrant для evals — датасет полностью синтетический). Также доступен ручной запуск через `workflow_dispatch`.
+
 ### Guardrails
 
 `backend/graph/guardrails.py` — PR-диффы и описания приходят от произвольных внешних контрибьюторов, это untrusted input, который течёт прямо в промпт:
