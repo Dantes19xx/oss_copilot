@@ -13,10 +13,25 @@ services:
     env_file: .env
     environment:
       QDRANT_URL: http://qdrant:6333
+      FRONTEND_ORIGIN: http://localhost:3000
     ports:
       - "8000:8000"
     depends_on:
       - qdrant
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      args:
+        # Baked in at build time (Next.js client-side env var convention) — the browser
+        # calls this URL directly, so it must be reachable from the host, not the
+        # backend's in-network service name.
+        NEXT_PUBLIC_API_URL: http://localhost:8000
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
 
 volumes:
   qdrant_storage:

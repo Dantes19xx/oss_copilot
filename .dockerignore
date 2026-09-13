@@ -10,4 +10,5 @@ node_modules/
 qdrant_storage/
 .env
 .env.local
-frontend/
+frontend/node_modules/
+frontend/.next/

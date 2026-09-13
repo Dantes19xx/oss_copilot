@@ -23,13 +23,32 @@ cp .env.example .env   # заполнить реальными ключами
 docker-compose up
 ```
 
-Backend будет доступен на `http://localhost:8000/health`, Qdrant — на `http://localhost:6333`. FastAPI пока expose'ит только health-check — сам граф вызывается через CLI (см. ниже), HTTP-API появится на этапе фронтенда (PLAN.md, этап 13). Проверить граф внутри уже собранного контейнера:
+`docker-compose up` поднимает все три сервиса: Qdrant (`:6333`), backend (`:8000`), frontend (`:3000`) — открыть `http://localhost:3000` и пользоваться веб-интерфейсом. Проверить граф и без UI, внутри уже собранного контейнера:
 
 ```bash
 docker compose exec backend python -m backend.graph.run_agent "Review the pull request https://github.com/owner/repo/pull/123"
 ```
 
-Сборка образа собирается из корня репозитория (не из `backend/`) — чтобы `backend.*` импорты внутри контейнера резолвились так же, как при локальном запуске с `PYTHONPATH=.`. Внутри compose-сети backend обращается к Qdrant по имени сервиса (`QDRANT_URL=http://qdrant:6333`, переопределяется поверх `.env`).
+Оба образа собираются из корня репозитория (не из `backend/`/`frontend/`) — чтобы `backend.*` импорты внутри контейнера резолвились так же, как при локальном запуске с `PYTHONPATH=.`. Внутри compose-сети backend обращается к Qdrant по имени сервиса (`QDRANT_URL=http://qdrant:6333`, переопределяется поверх `.env`).
+
+### Веб-интерфейс (Next.js)
+
+`frontend/` — минимальный UI на Next.js 16 (App Router, без стейт-менеджеров, без CSS-фреймворка): одно текстовое поле для свободного запроса ("review this PR" или "I know Python, want to contribute to a CLI tool"), результат или human-in-the-loop запрос (approve/reject или номер кандидата), кнопка "New request". Поверх `backend/app/main.py`, который оборачивает `review_app` (LangGraph) в HTTP:
+
+- `POST /api/agent/start {"message": str}` — стартует граф, возвращает `{status: "interrupt", thread_id, payload}` или `{status: "done", summary}`
+- `POST /api/agent/resume {"thread_id": str, "answer": str}` — резюмирует через `Command(resume=answer)`
+
+CORS настроен на `FRONTEND_ORIGIN` (по умолчанию `http://localhost:3000`). Локальный запуск без Docker:
+
+```bash
+# backend (из корня репо)
+PYTHONPATH=. uvicorn backend.app.main:app --reload --port 8000
+
+# frontend
+cd frontend && cp .env.local.example .env.local && npm install && npm run dev
+```
+
+Требует Node 20.9+ (Next.js 16 больше не поддерживает Node 18). Проверено вживую настоящим браузером через Playwright: полный сценарий (submit → interrupt → reject → результат → New request) отработал на реальном PR через задеплоенный в Docker стек, без единой правки логики после первого честного прогона (нашёл и починил два реальных бага по пути — см. PROGRESS.md).
 
 ### MCP-сервер
 
