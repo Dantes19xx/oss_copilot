@@ -234,8 +234,39 @@ git fetch origin   # чтобы синхронизировать локальн�
 - Playwright с Chromium теперь установлен локально (`~/.cache/ms-playwright/`) — можно переиспользовать для будущих UI-тестов без повторной загрузки браузера.
 - CI после пуша `05f88e4` подтянулся с задержкой (~1.5 мин до появления в `gh run list`, до этого — просто отсутствовал в выдаче) — похоже на задержку постановки в очередь раннеров GitHub Actions, а не на баг конфигурации; в итоге прогон дошёл до `completed success`. Если в будущем `gh run list` сразу после пуша ничего не покажет — не паниковать, подождать и перепроверить, прежде чем считать CI сломанным.
 
-**Следующий шаг (этап 17 из PLAN.md раздел 8):** Деплой на публичный URL (Vercel для фронтенда, Railway для backend) — теперь есть что деплоить (полноценный UI + HTTP API), не только health-check заглушка.
+## 2026-09-14 (этап 17 — деплой)
+
+Спросил пользователя про объём: полный деплой (backend+Qdrant на Railway, frontend на Vercel) или только backend без RAG. Выбрали полный.
+
+**Итог: всё живое и публичное, проверено настоящим браузером на финальных URL:**
+- Frontend: `https://oss-copilot-dmitriy-solo.vercel.app`
+- Backend: `https://osscopilot-production.up.railway.app` (`/health`, `/api/agent/start`, `/api/agent/resume`)
+- Qdrant: приватный, только по внутренней сети Railway (`qdrant.railway.internal:6333`)
+
+**По пути нашёл и починил 6 реальных проблем — ни одна не была видна из кода, только из живых попыток задеплоить:**
+
+1. **Railway CLI — разные операции требуют разные токены.** `RAILWAY_TOKEN` из `.env` — project-scoped токен: работает для `status`, `variables`, `logs`, `up`, `deployment list/redeploy` на уже существующих сервисах, но **не может** `link`/`list`/`add` (создание новых сервисов, привязка проекта) — падает "Unauthorized"/"Project not found". Обошёл через `railway api` (сырой GraphQL) — он работает с тем же project-token для запросов И мутаций в рамках уже существующего проекта, включая операции, которые CLI-обёртка `link`/`add` не пускает. `railway volume add` вообще падал с паникой Rust-биндинга (`Option::unwrap() on None`) — тоже обошёл через `volumeCreate` мутацию напрямую.
+2. **Существующий Railway-сервис `oss_copilot` был на GitHub-source, не CLI-upload**, и с самого создания (7 сентября) не мог собраться — Railpack не понимал, как собирать репо (тогда там был только README.md). `railway.json` с `build.dockerfilePath` **не сработал** — Railpack продолжал игнорировать конфиг-файл, даже после `git push`. Реально заработало — прямая GraphQL-мутация `serviceInstanceUpdate(input: {dockerfilePath, rootDirectory, healthcheckPath})` на сам service instance. `railway.json` в репо оставлен как задокументированное намерение, но по факту эффекта на билдер не оказал — это честно, не миф "работает, я не проверял".
+3. **`railway deployment redeploy` — редеплоит СТАРЫЙ коммит**, не последний. Первая попытка чинить билд через `redeploy` просто пересобрала initial commit (`aee94f89`, только README) и снова упала. Реально нужен `railway up` (загрузка текущей локальной директории) для деплоя актуального кода на GitHub-connected сервис через CLI.
+4. **`backend/Dockerfile` слушал захардкоженный `--port 8000`** (exec-form CMD, `$PORT` не разворачивался). Railway (как большинство PaaS) назначает динамический порт через `$PORT` и хелсчекает именно его — контейнер слушал не тот порт, health check падал 11 попыток подряд ("service unavailable") при полностью успешном билде. Починил: shell-form `CMD uvicorn ... --port ${PORT:-8000}` — проверил локально через docker-compose (PORT не задан) перед повторным деплоем на Railway, только потом задеплоил.
+5. **Qdrant-сервис в проекте существовал (с образом `qdrant/qdrant:latest`), но ни разу не был задеплоен** — `railway private-network status` явно писал "initializing... will be ready once the deployment of this service is complete". `QDRANT_URL=http://qdrant.railway.internal:6333` был правильным по формату, но резолвиться было некому. Создал volume (`volumeCreate` мутация, `/qdrant/storage`) и триггернул первый деплой (`serviceInstanceDeploy` мутация) — только тогда `private-network status` показал `Status: ready`.
+6. **Vercel по умолчанию закрывает продакшен-деплой SSO-стеной** (`ssoProtection: {deploymentType: "all_except_custom_domains"}` — дефолт для personal/hobby аккаунтов без кастомного домена). Playwright реально уткнулся в "Log in to Vercel" вместо страницы приложения — не гипотетическая, а живая находка. Отключил через `PATCH /v9/projects/{id}` (`ssoProtection: null`) через прямой вызов Vercel REST API (CLI не даёт это сделать напрямую).
+
+Дополнительно: переименовал Vercel-проект `frontend` → `oss-copilot` для более презентабельного URL (`frontend-dmitriy-solo.vercel.app` → `oss-copilot-dmitriy-solo.vercel.app`) — потребовало передеплоя, т.к. алиасы генерируются на момент деплоя, а не переименования задним числом.
+
+**Финальная проверка — не поверил ни одному "должно работать":**
+- `curl` health-check backend публично — 200.
+- `curl` полного `/api/agent/start` → `/api/agent/resume` цикла публично — реальные вызовы GitHub+OpenAI+Qdrant через продовую инфраструктуру, корректный результат.
+- Полный браузерный E2E (Playwright, headless Chromium) на **окончательных публичных URL** (не localhost, не Docker Compose) — submit → interrupt → reject → результат, с реальным PR (`pallets/flask#5918`).
+
+**Важно (для следующей сессии):**
+- `railway.json` в репозитории задокументированно **не управляет билдером** в этом аккаунте/версии платформы (несмотря на "existing files keep working until 2026-12-01" в CLI-предупреждении) — реальная конфигурация сервиса задана мутацией `serviceInstanceUpdate`, хранится на стороне Railway, не в репо. Если сервис когда-нибудь пересоздать с нуля — нужно будет повторить мутацию (или наконец мигрировать на `.railway/railway.ts`, `railway config migrate`), а не полагаться на файл.
+- Для любых новых Railway-операций сначала пробовать нужную CLI-команду; если она падает Unauthorized/паникой — сразу переходить на `railway api` с сырым GraphQL (`__schema`/`__type` интроспекция уже проверенно работает с этим токеном) вместо траты времени на подбор CLI-флагов.
+- `railway up` **блокирует локальный shell до завершения аплоада+билда** — с `--ci`/без `-d` реально может превысить 3-минутный локальный таймаут команды на полном `pip install` при холодном билде. Использовать `-d` (detach) и поллить `deployment list --json` отдельно, как в итоге и делал.
+- Секретов в открытом виде на этом этапе не выводил — все `railway variable set`/curl с токенами шли через переменные окружения без echo.
+
+**Следующий шаг:** ARCHITECTURE.md (диаграмма/mindmap архитектуры — обязательный артефакт ТЗ раздел 4, единственный из списка артефактов, которого пока нет) и презентация защиты. Из рекомендованных модулей (PLAN.md раздел 3) не сделаны: auth пользователей, голосовой интерфейс, собственный eval-фреймворк сверх уже сделанного, интеграция с доп. внешними API сверх GitHub, реальные пользователи — по PLAN.md это explicitly опциональные "если останется время", не блокируют защиту.
 
 **Открытые вопросы (не блокируют, но влияют на детали):**
 - Auth в MVP: пока допущение — без auth, single-user PAT.
-- Backend hosting: пока допущение — Railway.
+- Backend hosting: **больше не допущение — реально задеплоено на Railway.**

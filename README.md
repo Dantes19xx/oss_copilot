@@ -2,6 +2,8 @@
 
 AI-агент для code review merge request'ов на GitHub и поиска open-source репозитория, в который стоит стать контрибьютором.
 
+**Живое демо:** [oss-copilot-dmitriy-solo.vercel.app](https://oss-copilot-dmitriy-solo.vercel.app) (frontend, Vercel) → [osscopilot-production.up.railway.app](https://osscopilot-production.up.railway.app) (backend, Railway) → Qdrant (Railway, приватная сеть).
+
 Подробный план реализации, архитектура и обоснования технических решений — в [PLAN.md](PLAN.md).
 Статус работы по этапам — в [PROGRESS.md](PROGRESS.md).
 
@@ -155,6 +157,16 @@ Golden dataset (30 примеров), автоматизированные evals
 `backend/graph/nodes_review.py` (`_review_with_fallback`) — если primary-модель (gpt-4o-mini) не отвечает за `PRIMARY_TIMEOUT_S=20s` или падает с retryable-ошибкой (`RateLimitError`, `APITimeoutError`, `APIConnectionError`, `InternalServerError`), граф переключается на gpt-4o для этого файла. Осознанно НЕ ловим `AuthenticationError`/`BadRequestError`/`NotFoundError` — это признак реальной проблемы конфигурации (обе модели используют один и тот же ключ), которую fallback не решит, а только скроет.
 
 Проверено вживую: принудительно занизил таймаут primary до 0.001с (реальный timeout против живого API), граф поймал `OpenAITimeoutError` и успешно переключился на gpt-4o, вернув валидный комментарий.
+
+### Деплой
+
+- **Frontend** — Vercel, проект `oss-copilot`: [oss-copilot-dmitriy-solo.vercel.app](https://oss-copilot-dmitriy-solo.vercel.app). `NEXT_PUBLIC_API_URL` указывает на backend.
+- **Backend** — Railway, сервис `oss_copilot`: [osscopilot-production.up.railway.app](https://osscopilot-production.up.railway.app) (health: `/health`). Собирается по `backend/Dockerfile` (build context — корень репо), слушает `$PORT` (Railway назначает динамически, не 8000).
+- **Qdrant** — Railway, сервис `qdrant`, образ `qdrant/qdrant:latest`, persistent volume на `/qdrant/storage`, доступен backend'у по приватной сети (`QDRANT_URL=http://qdrant.railway.internal:6333`), публично не открыт.
+
+CORS на backend настроен через `FRONTEND_ORIGIN` = актуальный Vercel-домен.
+
+Дошли до рабочего деплоя не с первой попытки — реальные проблемы и их починки задокументированы в PROGRESS.md (в т.ч. Railway CLI требует разные токены/права под разные операции, приложение должно слушать `$PORT`, Qdrant-сервис существовал в проекте, но ни разу не был задеплоен, Vercel по умолчанию закрывает деплой SSO-аутентификацией).
 
 ## Статус
 
