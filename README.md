@@ -4,7 +4,8 @@ AI-агент для code review merge request'ов на GitHub и поиска 
 
 **Живое демо:** [oss-copilot-dmitriy-solo.vercel.app](https://oss-copilot-dmitriy-solo.vercel.app) (frontend, Vercel) → [osscopilot-production.up.railway.app](https://osscopilot-production.up.railway.app) (backend, Railway) → Qdrant (Railway, приватная сеть).
 
-Подробный план реализации, архитектура и обоснования технических решений — в [PLAN.md](PLAN.md).
+Подробный план реализации и обоснования технических решений — в [PLAN.md](PLAN.md).
+Архитектурная диаграмма, путь одного запроса от пользователя до ответа, независимость компонентов и trade-off'ы — в [ARCHITECTURE.md](ARCHITECTURE.md).
 Статус работы по этапам — в [PROGRESS.md](PROGRESS.md).
 
 ## Возможности
