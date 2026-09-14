@@ -15,4 +15,7 @@ COPY backend/ backend/
 
 ENV PYTHONPATH=/app
 
-CMD ["uvicorn", "backend.app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Shell form (not exec-form array) so $PORT actually expands — Railway (and most
+# PaaS hosts) assign a dynamic port via $PORT and healthcheck that, not 8000.
+# Defaults to 8000 when unset, matching docker-compose's local port mapping.
+CMD uvicorn backend.app.main:app --host 0.0.0.0 --port ${PORT:-8000}
