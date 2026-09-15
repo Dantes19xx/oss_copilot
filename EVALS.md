@@ -8,7 +8,11 @@ when.
 ## 1. What's being evaluated
 
 `backend/graph/nodes_review.review_file()` — the per-file review call the production
-LangGraph `analyze_file` node uses (gpt-4o-mini, structured output, temperature 0.2).
+LangGraph `analyze_file` node uses (gpt-4o-mini, structured output, temperature 0.0 —
+the current default; it was 0.2 until the §8 experiment changed it). `run_evals.py`
+calls `review_file()` without overriding `temperature`, so every eval run here always
+reflects whatever the production default currently is, not a fixed historical value —
+worth remembering when comparing runs across §8's change (see §5).
 Evals call this exact function, not a reimplementation of the prompt, so results reflect
 what the agent actually ships.
 
@@ -59,25 +63,30 @@ is what catches "right file, wrong/generic reason," which detection accuracy can
 model would be a natural next step, not done here. It's also only as good as its own
 prompt: see §5 for a real miscalibration this project hit and fixed.
 
-## 4. Results (n=30, run 2026-09-08)
+## 4. Results (n=30, run 2026-09-15 — latest; temperature 0.0, current default)
 
 | Metric | Value |
 |---|---|
-| Detection accuracy | **0.87** |
-| Precision | 0.85 |
+| Detection accuracy | **0.83** |
+| Precision | 0.81 |
 | Recall | **1.00** |
-| F1 | 0.92 |
-| Mean LLM-judge score | **4.20 / 5** |
+| F1 | 0.90 |
+| Mean LLM-judge score | **4.13 / 5** |
 
 By category:
 
 | Category | n | Accuracy | Mean judge score |
 |---|---|---|---|
-| bug | 6 | 1.00 | 4.67 |
+| bug | 6 | 1.00 | 5.00 |
 | security | 6 | 1.00 | 4.33 |
-| breaking_change | 5 | 1.00 | 4.20 |
-| missing_tests | 5 | 1.00 | 3.40 |
-| clean | 8 | 0.50 | 4.25 |
+| breaking_change | 5 | 1.00 | 4.60 |
+| missing_tests | 5 | 1.00 | 3.00 |
+| clean | 8 | 0.38 | 3.75 |
+
+For comparison, the first documented run (n=30, 2026-09-08, temperature 0.2 — the
+default at the time): accuracy 0.87, precision 0.85, recall 1.00, F1 0.92, judge
+4.20/5; clean-category accuracy 0.50. Both runs are real, both are kept — see §5 for
+why the difference isn't simply read as "the newer number is more correct."
 
 Raw per-example results (including judge reasoning for every example) are written to
 `backend/evals/results.json` on every run — not committed as a static artifact, since a
@@ -85,16 +94,20 @@ rerun regenerates it and the repo should reflect the latest run, not a frozen sn
 
 ## 5. Findings
 
-- **Recall is perfect (1.00), precision is not (0.85).** The reviewer never misses a
-  real issue across bug/security/missing_tests/breaking_change (100% accuracy in all
-  four), but flags 4 of 8 clean diffs — clean-category accuracy is only 0.50. It errs
-  toward over-flagging rather than under-flagging, which is the safer failure mode for a
-  code-review tool, but it's a real, measured false-positive rate, not zero.
+- **Recall is perfect (1.00), precision is not (0.81 in the latest run).** The reviewer
+  never misses a real issue across bug/security/missing_tests/breaking_change (100%
+  accuracy in all four, in both documented runs), but flags 5 of 8 clean diffs in the
+  latest run (4 of 8 in the first) — clean-category accuracy is 0.38, down from 0.50.
+  It errs toward over-flagging rather than under-flagging, which is the safer failure
+  mode for a code-review tool, but it's a real, measured false-positive rate, not zero,
+  and it moved between runs rather than holding steady.
 - **Detection accuracy and judge score disagree, and that disagreement is the point.**
-  `missing_tests` has perfect detection accuracy (1.00) but the lowest judge score
-  (3.40) — the model correctly notices *something's* off but its stated reasoning is
-  often vague or points at the wrong mechanism (e.g. flagged "type handling" instead of
-  "no test covers this new branch"). A single metric would have hidden this.
+  `missing_tests` has perfect detection accuracy (1.00) but the lowest judge score in
+  both runs (3.00 in the latest, 3.40 in the first) — the model correctly notices
+  *something's* off but its stated reasoning is often vague or points at the wrong
+  mechanism (e.g. flagged "type handling" instead of "no test covers this new branch").
+  A single metric would have hidden this, and it's the one finding that held up
+  identically across both runs.
 - **A judge-prompt bug inflated a false signal, caught by rerunning.** The first
   version of the judge prompt scored a *correct* empty `comments` list on a clean diff as
   1/5, because its rubric implicitly expected the model to say something (even "looks
@@ -112,11 +125,22 @@ rerun regenerates it and the repo should reflect the latest run, not a frozen sn
   file-by-file review (vs. reviewing the full PR at once) worth knowing about rather than
   papering over: `analyze_file` (backend/graph/nodes_review.py) has no cross-file
   context beyond the RAG-retrieved style guide.
-- **Run-to-run variance exists.** Two runs of the same 30 examples (temperature 0.2 for
-  the reviewer, 0 for the judge) produced accuracy 0.90 then 0.87, and mean judge score
-  3.20 then 4.20 (the second jump is the prompt fix above, not just noise — but even the
-  detection-accuracy delta alone shows the model isn't perfectly deterministic at 0.2).
-  A single run's numbers should be read as an estimate, not an exact figure.
+- **Run-to-run variance exists, and it's larger than it looks at first.** Three data
+  points now exist for this exact 30-example set: accuracy 0.87 (2026-09-08, temperature
+  0.2, judge prompt bug already fixed by that point), 0.90 (§8's dedicated temperature
+  experiment, same day, both temperature 0.0 and 0.2 landed on 0.90), and 0.83
+  (2026-09-15, temperature 0.0 — today's production default). The 2026-09-15 run is
+  **confounded**: it differs from the first run in both *when* it ran and *what
+  temperature it used* (§8 changed the production default from 0.2 to 0.0 in between),
+  so the 0.87 → 0.83 drop cannot be cleanly attributed to the temperature change. What
+  the three numbers together do show cleanly: even the single controlled comparison in
+  §8, which held everything but temperature fixed, produced 0.90 for *both* settings —
+  yet neither of the two standalone `run_evals.py` runs (0.87, 0.83) matched that 0.90 at
+  all. The spread across all three (0.83-0.90) is real sampling noise in the reviewer's
+  own output at n=30, not something to explain away by picking whichever run is most
+  recent or most favorable. A single run's numbers should always be read as an estimate
+  with real width, not an exact figure — this is the concrete evidence for that, not just
+  a caveat.
 
 ## 6. Reproducing
 
