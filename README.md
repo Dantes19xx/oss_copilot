@@ -7,6 +7,7 @@ AI-агент для code review merge request'ов на GitHub и поиска 
 Подробный план реализации и обоснования технических решений — в [PLAN.md](PLAN.md).
 Архитектурная диаграмма, путь одного запроса от пользователя до ответа, независимость компонентов и trade-off'ы — в [ARCHITECTURE.md](ARCHITECTURE.md).
 Статус работы по этапам — в [PROGRESS.md](PROGRESS.md).
+Презентация защиты (15 слайдов) — [presentation/oss-copilot-slides.pdf](presentation/oss-copilot-slides.pdf) (исходник: [presentation/slides.html](presentation/slides.html)).
 
 ## Возможности
 

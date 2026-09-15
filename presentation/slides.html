@@ -1,0 +1,813 @@
+<title>OSS Copilot</title>
+<style>
+  :root {
+    color-scheme: light;
+    --bg: #f6f7f5;
+    --surface: #ffffff;
+    --surface-2: #eef1ee;
+    --ink: #14191f;
+    --ink-2: #4b5750;
+    --ink-3: #7c8880;
+    --accent: #0e8a63;
+    --accent-ink: #0b5e44;
+    --accent-soft: #dceae4;
+    --signal: #c97a2b;
+    --signal-soft: #f3e3d1;
+    --line: #d9ded9;
+    --chart-1: #0e8a63;
+    --chart-2: #6b4e9e;
+    --shadow: 0 1px 2px rgba(20, 25, 31, 0.06), 0 8px 24px rgba(20, 25, 31, 0.05);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --bg: #0f1512;
+      --surface: #161d19;
+      --surface-2: #1d2620;
+      --ink: #e8ece9;
+      --ink-2: #b7c2bb;
+      --ink-3: #8a968f;
+      --accent: #4fbf9f;
+      --accent-ink: #8fe2c8;
+      --accent-soft: #1c2e28;
+      --signal: #e0954a;
+      --signal-soft: #3a2a18;
+      --line: #2a322d;
+      --chart-1: #2ea382;
+      --chart-2: #8b7ac8;
+      --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px rgba(0, 0, 0, 0.35);
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #0f1512;
+    --surface: #161d19;
+    --surface-2: #1d2620;
+    --ink: #e8ece9;
+    --ink-2: #b7c2bb;
+    --ink-3: #8a968f;
+    --accent: #4fbf9f;
+    --accent-ink: #8fe2c8;
+    --accent-soft: #1c2e28;
+    --signal: #e0954a;
+    --signal-soft: #3a2a18;
+    --line: #2a322d;
+    --chart-1: #2ea382;
+    --chart-2: #8b7ac8;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px rgba(0, 0, 0, 0.35);
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: "IBM Plex Sans", -apple-system, "Segoe UI", sans-serif;
+    scroll-behavior: smooth;
+  }
+
+  .deck {
+    scroll-snap-type: y mandatory;
+    height: 100vh;
+    overflow-y: auto;
+  }
+
+  .slide {
+    scroll-snap-align: start;
+    min-height: 100vh;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 5vh 9vw;
+    position: relative;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .kicker {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.78rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--accent-ink);
+    margin: 0 0 0.9rem;
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+  }
+  .kicker::before {
+    content: "";
+    width: 22px;
+    height: 2px;
+    background: var(--accent);
+    display: inline-block;
+  }
+
+  h1 {
+    font-family: "JetBrains Mono", monospace;
+    font-weight: 700;
+    font-size: clamp(2.1rem, 4.4vw, 3.6rem);
+    line-height: 1.08;
+    letter-spacing: -0.01em;
+    margin: 0 0 1rem;
+    text-wrap: balance;
+    max-width: 15ch;
+  }
+
+  h2 {
+    font-family: "JetBrains Mono", monospace;
+    font-weight: 600;
+    font-size: clamp(1.5rem, 2.6vw, 2.15rem);
+    line-height: 1.15;
+    margin: 0 0 1.6rem;
+    text-wrap: balance;
+    max-width: 22ch;
+  }
+
+  .lede {
+    font-size: clamp(1.05rem, 1.5vw, 1.28rem);
+    line-height: 1.55;
+    color: var(--ink-2);
+    max-width: 62ch;
+    margin: 0 0 1.6rem;
+  }
+
+  p.note {
+    font-size: 0.98rem;
+    line-height: 1.55;
+    color: var(--ink-2);
+    max-width: 68ch;
+  }
+
+  .slide-num {
+    position: absolute;
+    top: 3vh;
+    right: 9vw;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.82rem;
+    color: var(--ink-3);
+    letter-spacing: 0.02em;
+  }
+  .slide-num b { color: var(--ink); }
+
+  .rail {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 5px;
+    background: var(--accent);
+  }
+  .rail.signal { background: var(--signal); }
+
+  code, .mono {
+    font-family: "IBM Plex Mono", monospace;
+  }
+
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4em;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.78rem;
+    letter-spacing: 0.03em;
+    padding: 0.28em 0.7em;
+    border-radius: 999px;
+    background: var(--accent-soft);
+    color: var(--accent-ink);
+    border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+  }
+  .pill.warn {
+    background: var(--signal-soft);
+    color: var(--signal);
+    border-color: color-mix(in srgb, var(--signal) 40%, transparent);
+  }
+
+  /* ---- two-column body layouts ---- */
+  .cols {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 3.2rem;
+    align-items: start;
+  }
+  .cols.uneven { grid-template-columns: 1.1fr 1fr; }
+
+  ul.plain { list-style: none; margin: 0; padding: 0; }
+  ul.plain li {
+    padding: 0.85rem 0;
+    border-top: 1px solid var(--line);
+    display: flex;
+    gap: 1rem;
+    align-items: baseline;
+  }
+  ul.plain li:last-child { border-bottom: 1px solid var(--line); }
+  ul.plain .tag {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.82rem;
+    color: var(--accent-ink);
+    white-space: nowrap;
+    min-width: 9.5em;
+  }
+  ul.plain .desc { color: var(--ink-2); font-size: 0.96rem; line-height: 1.5; }
+  ul.plain .desc b { color: var(--ink); font-weight: 600; }
+
+  /* ---- stat tiles ---- */
+  .stats {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 1px;
+    background: var(--line);
+    border: 1px solid var(--line);
+    margin: 1.4rem 0 2rem;
+  }
+  .stat {
+    background: var(--surface);
+    padding: 1.3rem 1.1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+  }
+  .stat .n {
+    font-family: "JetBrains Mono", monospace;
+    font-variant-numeric: tabular-nums;
+    font-weight: 700;
+    font-size: clamp(1.5rem, 2vw, 1.9rem);
+    color: var(--accent-ink);
+  }
+  .stat .l {
+    font-size: 0.76rem;
+    color: var(--ink-3);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  /* ---- bar chart (single + paired) ---- */
+  .barchart {
+    display: flex;
+    align-items: flex-end;
+    gap: 1.6rem;
+    height: 200px;
+    margin: 1.6rem 0 0.6rem;
+    padding: 0 0.2rem;
+    border-bottom: 1px solid var(--line);
+  }
+  .bargroup {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-end;
+    height: 100%;
+    flex: 1;
+    gap: 0.5rem;
+  }
+  .bargroup .bars {
+    display: flex;
+    align-items: flex-end;
+    gap: 5px;
+    height: 100%;
+  }
+  .bar {
+    width: 30px;
+    border-radius: 3px 3px 0 0;
+    position: relative;
+    display: flex;
+    justify-content: center;
+  }
+  .bar .val {
+    position: absolute;
+    top: -1.35rem;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.74rem;
+    color: var(--ink-2);
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+  .bar.c1 { background: var(--chart-1); }
+  .bar.c2 { background: var(--chart-2); }
+  .bargroup .glabel {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.76rem;
+    color: var(--ink-3);
+    text-align: center;
+    line-height: 1.3;
+  }
+  .legend {
+    display: flex;
+    gap: 1.6rem;
+    margin-top: 0.9rem;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.8rem;
+    color: var(--ink-2);
+  }
+  .legend span { display: inline-flex; align-items: center; gap: 0.5em; }
+  .swatch { width: 11px; height: 11px; border-radius: 2px; display: inline-block; }
+  .swatch.c1 { background: var(--chart-1); }
+  .swatch.c2 { background: var(--chart-2); }
+
+  /* ---- diagram boxes ---- */
+  .diagram {
+    display: flex;
+    flex-direction: column;
+    gap: 1.1rem;
+    margin: 1.2rem 0;
+  }
+  .drow {
+    display: flex;
+    align-items: center;
+    gap: 0.9rem;
+    flex-wrap: wrap;
+  }
+  .drow.center { justify-content: center; }
+  .dbox {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    box-shadow: var(--shadow);
+    border-radius: 8px;
+    padding: 0.75rem 1.05rem;
+    font-size: 0.88rem;
+    line-height: 1.35;
+    min-width: 9em;
+    text-align: center;
+  }
+  .dbox b { display: block; font-family: "IBM Plex Mono", monospace; font-size: 0.86rem; color: var(--ink); }
+  .dbox span { color: var(--ink-3); font-size: 0.76rem; }
+  .dbox.accent { border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); }
+  .dbox.accent b { color: var(--accent-ink); }
+  .darrow {
+    font-family: "IBM Plex Mono", monospace;
+    color: var(--ink-3);
+    font-size: 1.1rem;
+    flex-shrink: 0;
+  }
+  .dgroup {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.35rem;
+  }
+  .dgroup .down { color: var(--ink-3); font-family: "IBM Plex Mono", monospace; }
+
+  /* ---- flow diagram (graph) ---- */
+  .flow {
+    display: flex;
+    flex-direction: column;
+    gap: 0.55rem;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.86rem;
+    margin: 1.3rem 0;
+  }
+  .fnode {
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
+  }
+  .fnode .box {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 0.45rem 0.85rem;
+    box-shadow: var(--shadow);
+  }
+  .fnode .box.hitl { border-color: var(--signal); color: var(--signal); font-weight: 600; }
+  .fnode .box.hitl i { font-style: normal; font-weight: 400; opacity: 0.75; }
+  .fnode .box.loop { border-style: dashed; }
+  .findent-1 { margin-left: 1.6rem; }
+  .findent-2 { margin-left: 3.2rem; }
+  .fbranch { color: var(--ink-3); font-size: 0.8rem; }
+
+  /* ---- footer / progress ---- */
+  .demo-link {
+    margin-top: 2rem;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.95rem;
+    color: var(--accent-ink);
+  }
+
+  ::selection { background: var(--accent-soft); }
+
+  .navhint {
+    position: fixed;
+    bottom: 3vh;
+    right: 9vw;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.76rem;
+    color: var(--ink-3);
+    background: var(--surface);
+    border: 1px solid var(--line);
+    padding: 0.4rem 0.8rem;
+    border-radius: 999px;
+    box-shadow: var(--shadow);
+    z-index: 10;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    html, body { scroll-behavior: auto; }
+  }
+
+  @media print {
+    .navhint { display: none; }
+    .deck { height: auto; overflow: visible; }
+    .slide {
+      min-height: 100vh;
+      height: 100vh;
+      page-break-after: always;
+      border-bottom: none;
+    }
+    @page { size: landscape; margin: 0; }
+  }
+</style>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+<div class="deck" id="deck">
+
+  <!-- 1 — TITLE -->
+  <section class="slide">
+    <div class="rail"></div>
+    <div class="slide-num"><b>01</b> / 15</div>
+    <div class="kicker">Защита проекта · LLM-инженерия</div>
+    <h1 style="font-size:clamp(2.6rem,6vw,4.6rem); max-width: 12ch;">OSS<br>COPILOT</h1>
+    <p class="lede">AI-агент, который ревьюит pull request'ы на GitHub и помогает найти
+      open-source проект, в который стоит начать контрибьютить — один граф LangGraph,
+      два режима, человек всегда подтверждает финальное действие.</p>
+    <p class="demo-link">→ oss-copilot-dmitriy-solo.vercel.app</p>
+  </section>
+
+  <!-- 2 — PROBLEM -->
+  <section class="slide">
+    <div class="slide-num"><b>02</b> / 15</div>
+    <div class="kicker">Проблема</div>
+    <h2>Один пользователь, две реальные боли</h2>
+    <div class="cols">
+      <div>
+        <p class="pill">PR Reviewer</p>
+        <p class="lede" style="font-size:1.05rem; margin-top:0.8rem;">Разработчик хочет
+          получить качественное автоматическое ревью своего PR <b style="color:var(--ink)">до</b>
+          того, как звать живого ревьюера — сейчас это либо ждать часы/дни, либо
+          выкладывать код без второй пары глаз.</p>
+      </div>
+      <div>
+        <p class="pill">Repo Matcher</p>
+        <p class="lede" style="font-size:1.05rem; margin-top:0.8rem;">Разработчик хочет
+          начать контрибьютить в open source, но тонет в поиске "с чего начать" — звёзды
+          на GitHub ничего не говорят о том, дружелюбен ли проект к новичкам прямо сейчас.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 3 — SOLUTION -->
+  <section class="slide">
+    <div class="slide-num"><b>03</b> / 15</div>
+    <div class="kicker">Решение</div>
+    <h2>Один агент, один граф, свободный текст на входе</h2>
+    <p class="lede">Пользователь просто описывает, что нужно — "review this PR
+      &lt;ссылка&gt;" или "I know Python, want to contribute to a CLI tool". Классификация
+      запроса — это и есть первое реальное ветвление графа.</p>
+    <ul class="plain" style="max-width:44em;">
+      <li><span class="tag">review</span><span class="desc"><b>Ревью файл за файлом</b> —
+        баги, security, тесты, breaking changes — с грaундингом в конвенциях конкретного
+        репозитория.</span></li>
+      <li><span class="tag">repo_match</span><span class="desc"><b>Ранжированный список
+        кандидатов</b> по fit-score (CONTRIBUTING, good-first-issues, активность), не по
+        звёздам.</span></li>
+    </ul>
+    <p class="note" style="margin-top:1.4rem;"><span class="pill warn">human-in-the-loop</span>
+      &nbsp;Ни один комментарий не публикуется в GitHub без явного подтверждения человека.</p>
+  </section>
+
+  <!-- 4 — ARCHITECTURE -->
+  <section class="slide">
+    <div class="slide-num"><b>04</b> / 15</div>
+    <div class="kicker">Архитектура</div>
+    <h2>От браузера до GitHub и обратно</h2>
+    <div class="diagram">
+      <div class="drow center">
+        <div class="dbox"><b>Браузер</b><span>пользователь</span></div>
+        <div class="darrow">→</div>
+        <div class="dbox"><b>Next.js</b><span>Vercel</span></div>
+        <div class="darrow">→</div>
+        <div class="dbox"><b>FastAPI</b><span>Railway</span></div>
+        <div class="darrow">→</div>
+        <div class="dbox accent"><b>LangGraph</b><span>агент</span></div>
+      </div>
+      <div class="drow center" style="margin-top:0.6rem;">
+        <div class="dgroup">
+          <span class="down">↓</span>
+          <div class="dbox"><b>MCP-сервер</b><span>свой, 6 tool'ов</span></div>
+          <span class="down">↓</span>
+          <div class="dbox"><b>GitHub API</b></div>
+        </div>
+        <div class="dgroup">
+          <span class="down">↓</span>
+          <div class="dbox"><b>OpenAI API</b><span>chat · vision · embeddings</span></div>
+        </div>
+        <div class="dgroup">
+          <span class="down">↓</span>
+          <div class="dbox"><b>Qdrant</b><span>Railway, приватная сеть</span></div>
+        </div>
+        <div class="dgroup">
+          <span class="down" style="opacity:0.5;">···</span>
+          <div class="dbox" style="border-style:dashed;"><b>LangSmith</b><span>трейс каждого вызова</span></div>
+        </div>
+      </div>
+    </div>
+    <p class="note">Ни один узел графа не ходит в GitHub или OpenAI напрямую — только
+      через MCP tool layer или <code>langchain_openai.ChatOpenAI</code>, поэтому каждый
+      LLM-вызов автоматически попадает в LangSmith.</p>
+  </section>
+
+  <!-- 5 — LANGGRAPH CONTROL FLOW -->
+  <section class="slide">
+    <div class="rail"></div>
+    <div class="slide-num"><b>05</b> / 15</div>
+    <div class="kicker">LangGraph</div>
+    <h2>Ветвления, циклы, human-in-the-loop</h2>
+    <div class="cols">
+      <div class="flow">
+        <div class="fnode"><span class="fbranch">intake →</span><span class="box">review</span></div>
+        <div class="fnode findent-1"><span class="box">fetch_diff</span></div>
+        <div class="fnode findent-1"><span class="box loop">analyze_file <span style="color:var(--accent-ink)">↻ ≤10 файлов</span></span></div>
+        <div class="fnode findent-1"><span class="box">aggregate_review</span></div>
+        <div class="fnode findent-1"><span class="box hitl">human_confirm <i>· pause</i></span></div>
+        <div class="fnode findent-2"><span class="box">post_comment</span><span class="fbranch">/ discard</span></div>
+      </div>
+      <div class="flow">
+        <div class="fnode"><span class="fbranch">intake →</span><span class="box">repo_match</span></div>
+        <div class="fnode findent-1"><span class="box">search_repos</span></div>
+        <div class="fnode findent-1"><span class="box loop">score_repo <span style="color:var(--accent-ink)">↻ ≤5 кандидатов</span></span></div>
+        <div class="fnode findent-1"><span class="box">present_candidates</span></div>
+        <div class="fnode findent-1"><span class="box hitl">human_select <i>· pause</i></span></div>
+        <div class="fnode findent-2"><span class="box">fetch_good_first_issues</span></div>
+      </div>
+    </div>
+    <p class="note" style="margin-top:1.2rem;">Оба цикла ограничены (файлы ≤10, кандидаты
+      ≤5) — не могут убежать. Обе паузы — один и тот же механизм:
+      <code>langgraph.types.interrupt()</code> + <code>Command(resume=...)</code>.</p>
+  </section>
+
+  <!-- 6 — MCP SERVER -->
+  <section class="slide">
+    <div class="slide-num"><b>06</b> / 15</div>
+    <div class="kicker">Собственный MCP-сервер</div>
+    <h2>6 инструментов поверх GitHub API</h2>
+    <ul class="plain">
+      <li><span class="tag">get_pr_diff</span><span class="desc">diff и метаданные pull request'а</span></li>
+      <li><span class="tag">get_pr_files</span><span class="desc">patch по каждому файлу — для поочерёдного ревью</span></li>
+      <li><span class="tag">post_pr_comment</span><span class="desc"><b>write</b> — вызывается только после подтверждения человеком</span></li>
+      <li><span class="tag">search_github_repos</span><span class="desc">поиск репозиториев-кандидатов</span></li>
+      <li><span class="tag">get_repo_health</span><span class="desc">CONTRIBUTING.md, good-first-issues, активность, лицензия</span></li>
+      <li><span class="tag">get_good_first_issues</span><span class="desc">открытые issue для выбранного репозитория</span></li>
+    </ul>
+    <p class="note" style="margin-top:1.2rem;">Граф вызывает их через настоящий MCP-протокол
+      (<code>mcp.Client</code>, in-process) — не прямым импортом функций.</p>
+  </section>
+
+  <!-- 7 — RAG -->
+  <section class="slide">
+    <div class="slide-num"><b>07</b> / 15</div>
+    <div class="kicker">RAG-пайплайн</div>
+    <h2>Ревью, заземлённое в конвенциях конкретного репозитория</h2>
+    <div class="diagram">
+      <div class="drow center">
+        <div class="dbox"><b>README / CONTRIBUTING</b></div>
+        <div class="darrow">→</div>
+        <div class="dbox"><b>Chunking</b><span>по заголовкам + окна 500/50 ток.</span></div>
+        <div class="darrow">→</div>
+        <div class="dbox"><b>text-embedding-3-small</b></div>
+        <div class="darrow">→</div>
+        <div class="dbox accent"><b>Qdrant</b><span>1 коллекция, фильтр по repo</span></div>
+      </div>
+    </div>
+    <p class="note">Retrieval подмешивается в промпт review-узла перед анализом каждого
+      файла; если для репозитория ничего не проиндексировано — граф не падает, просто
+      ревьюит без грaундинга.</p>
+  </section>
+
+  <!-- 8 — MULTIMODAL -->
+  <section class="slide">
+    <div class="rail"></div>
+    <div class="slide-num"><b>08</b> / 15</div>
+    <div class="kicker">Мультимодальность</div>
+    <h2>Vision-анализ скриншотов в описании PR</h2>
+    <p class="lede">Скриншот или demo-гифка в описании PR — это то, что текстовый diff
+      физически не может увидеть: несовпадение с заявленным изменением, сломанный layout,
+      баг, видимый только на картинке.</p>
+    <p class="note"><span class="pill">реальный пример</span>&nbsp;&nbsp;<code>facebook/docusaurus#7036</code>
+      — demo-гифка в Test Plan была найдена, проанализирована vision-моделью, и вывод
+      попал в финальный ревью-комментарий вместе с текстовыми замечаниями.</p>
+  </section>
+
+  <!-- 9 — MONITORING -->
+  <section class="slide">
+    <div class="slide-num"><b>09</b> / 15</div>
+    <div class="kicker">Мониторинг</div>
+    <h2>LangSmith: трейс каждого LLM-вызова</h2>
+    <ul class="plain" style="max-width:50em;">
+      <li><span class="tag">chat + vision</span><span class="desc">трейсятся автоматически через <code>langchain_openai.ChatOpenAI</code> — без дополнительного кода</span></li>
+      <li><span class="tag">embeddings</span><span class="desc"><b>найденная слепая зона</b> — <code>OpenAIEmbeddings</code> не <code>Runnable</code>, LangSmith её не видит; закрыто явным <code>@traceable</code></span></li>
+      <li><span class="tag">thread_id</span><span class="desc">связывает оба <code>ainvoke()</code> одного HITL-сценария (до и после interrupt) в одну историю в дашборде</span></li>
+    </ul>
+  </section>
+
+  <!-- 10 — EVALS -->
+  <section class="slide">
+    <div class="slide-num"><b>10</b> / 15</div>
+    <div class="kicker">Golden dataset · 30 примеров</div>
+    <h2>Две метрики — не одна</h2>
+    <p class="note">6 bug · 6 security · 5 missing_tests · 5 breaking_change · 8 clean —
+      синтетические, ради точной разметки (два диффа, похожих на 95%, могут отличаться
+      именно строкой с багом).</p>
+    <div class="stats">
+      <div class="stat"><span class="n">0.87</span><span class="l">Accuracy</span></div>
+      <div class="stat"><span class="n">0.85</span><span class="l">Precision</span></div>
+      <div class="stat"><span class="n">1.00</span><span class="l">Recall</span></div>
+      <div class="stat"><span class="n">0.92</span><span class="l">F1</span></div>
+      <div class="stat"><span class="n">4.20/5</span><span class="l">LLM-as-judge</span></div>
+    </div>
+    <p class="note">Accuracy = сказал ли что-то, когда должен был. Judge = совпадает ли
+      суть комментария с реальной проблемой. Они расходятся —
+      <code>missing_tests</code>: accuracy 1.00, judge всего 3.40 — модель замечает
+      "что-то не так", но часто не то.</p>
+  </section>
+
+  <!-- 11 — A/B -->
+  <section class="slide">
+    <div class="rail"></div>
+    <div class="slide-num"><b>11</b> / 15</div>
+    <div class="kicker">A/B эксперимент</div>
+    <h2>gpt-4o-mini против gpt-4o</h2>
+    <div class="barchart">
+      <div class="bargroup">
+        <div class="bars">
+          <div class="bar c1" style="height:87%;"><span class="val">.87</span></div>
+          <div class="bar c2" style="height:90%;"><span class="val">.90</span></div>
+        </div>
+        <div class="glabel">Accuracy</div>
+      </div>
+      <div class="bargroup">
+        <div class="bars">
+          <div class="bar c1" style="height:82.6%;"><span class="val">4.13</span></div>
+          <div class="bar c2" style="height:81.4%;"><span class="val">4.07</span></div>
+        </div>
+        <div class="glabel">Judge /5</div>
+      </div>
+      <div class="bargroup">
+        <div class="bars">
+          <div class="bar c1" style="height:60%;"><span class="val">1.31s</span></div>
+          <div class="bar c2" style="height:100%;"><span class="val">2.18s</span></div>
+        </div>
+        <div class="glabel">Латентность</div>
+      </div>
+      <div class="bargroup">
+        <div class="bars">
+          <div class="bar c1" style="height:4%;"><span class="val">$0.002</span></div>
+          <div class="bar c2" style="height:100%;"><span class="val">$0.052</span></div>
+        </div>
+        <div class="glabel">Стоимость / 30 вызовов</div>
+      </div>
+    </div>
+    <div class="legend">
+      <span><i class="swatch c1"></i>gpt-4o-mini</span>
+      <span><i class="swatch c2"></i>gpt-4o</span>
+    </div>
+    <p class="note" style="margin-top:1.2rem;"><b style="color:var(--ink)">Решение: остались
+      на gpt-4o-mini.</b> Recall выше (1.00 vs 0.95 — gpt-4o пропустил реальный баг), judge
+      score не ниже, а стоимость — в 23 раза меньше.</p>
+  </section>
+
+  <!-- 12 — HYPERPARAMS -->
+  <section class="slide">
+    <div class="slide-num"><b>12</b> / 15</div>
+    <div class="kicker">Гиперпараметры</div>
+    <h2>Temperature подобрана экспериментом, не угадана</h2>
+    <div class="barchart" style="height:160px;">
+      <div class="bargroup">
+        <div class="bars"><div class="bar c1" style="height:100%; width:56px;"><span class="val">4.20</span></div></div>
+        <div class="glabel">t = 0.0</div>
+      </div>
+      <div class="bargroup">
+        <div class="bars"><div class="bar c1" style="height:100%; width:56px;"><span class="val">4.20</span></div></div>
+        <div class="glabel">t = 0.2 (было)</div>
+      </div>
+      <div class="bargroup">
+        <div class="bars"><div class="bar c1" style="height:95.2%; width:56px;"><span class="val">4.00</span></div></div>
+        <div class="glabel">t = 0.7</div>
+      </div>
+    </div>
+    <p class="note" style="margin-top:1.2rem;">При t=0.7 разброс числа комментариев между
+      повторами одного и того же файла ненулевой; при t=0.0/0.2 — нулевой. Judge-score
+      одинаков у 0.0 и 0.2 → <b style="color:var(--ink)">переключили дефолт на 0.0</b> —
+      то же качество, детерминированность бесплатно.</p>
+  </section>
+
+  <!-- 13 — RECOMMENDED MODULES -->
+  <section class="slide">
+    <div class="slide-num"><b>13</b> / 15</div>
+    <div class="kicker">Guardrails · Кэш · Fallback</div>
+    <h2>Три слоя надёжности поверх базового графа</h2>
+    <div class="cols" style="grid-template-columns: 1fr 1fr 1fr; gap:2rem;">
+      <div>
+        <p class="pill warn">Guardrails</p>
+        <p class="note" style="margin-top:0.7rem;">Diff — untrusted input. Детектор
+          prompt-injection предупреждает человека в HITL-запросе; секреты вырезаются из
+          комментария до публикации.</p>
+      </div>
+      <div>
+        <p class="pill">Кэш</p>
+        <p class="note" style="margin-top:0.7rem;">Точный, не семантический — похожие
+          диффы могут отличаться той самой строкой с багом. Повтор PR: 7 вызовов
+          OpenAI → 1.</p>
+      </div>
+      <div>
+        <p class="pill">Fallback</p>
+        <p class="note" style="margin-top:0.7rem;">gpt-4o-mini → gpt-4o при таймауте.
+          Проверено реальным 0.001с таймаутом против живого API — переключение
+          сработало.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 14 — CI/CD, DOCKER, DEPLOY -->
+  <section class="slide">
+    <div class="rail"></div>
+    <div class="slide-num"><b>14</b> / 15</div>
+    <div class="kicker">CI/CD · Docker · Деплой</div>
+    <h2>Живой публичный стек</h2>
+    <div class="diagram">
+      <div class="drow center">
+        <div class="dbox accent"><b>Vercel</b><span>Next.js frontend</span></div>
+        <div class="darrow">→</div>
+        <div class="dbox accent"><b>Railway</b><span>FastAPI backend</span></div>
+        <div class="darrow">→</div>
+        <div class="dbox accent"><b>Railway</b><span>Qdrant, приватная сеть</span></div>
+      </div>
+    </div>
+    <p class="lede" style="font-size:1rem;">GitHub Actions гоняет golden dataset evals на
+      каждый push — реально зелёный в облаке, не только локально.</p>
+    <p class="note"><span class="pill warn">6 реальных багов</span>&nbsp; найдено и
+      починено при деплое — не гипотетических: контейнер слушал не тот порт (<code>$PORT</code>),
+      backend работал на старом образе, Qdrant-сервис ни разу не был задеплоен, Vercel
+      закрывал сайт SSO-стеной. Каждый пойман живой проверкой, не чтением кода.</p>
+  </section>
+
+  <!-- 15 — CLOSING -->
+  <section class="slide">
+    <div class="slide-num"><b>15</b> / 15</div>
+    <div class="kicker">Итоги</div>
+    <h2>Что сделано и что дальше</h2>
+    <div class="cols uneven">
+      <div>
+        <p class="lede" style="font-size:1.02rem;">Все обязательные модули ТЗ реализованы
+          и проверены вживую: LangGraph + MCP + Skill, RAG + мультимодальность, LangSmith
+          + evals + A/B, обоснованный выбор модели и гиперпараметров — плюс guardrails,
+          кэш, fallback, CI/CD, Docker, публичный деплой.</p>
+        <p class="note"><b style="color:var(--ink)">Главная находка:</b> гипотеза "модель
+          сильнее — значит лучше" не подтвердилась данными — gpt-4o-mini выиграл у
+          gpt-4o по recall и judge-score при 23-кратной разнице в цене.</p>
+      </div>
+      <div>
+        <p class="pill">Дальше</p>
+        <ul class="plain" style="margin-top:0.8rem;">
+          <li><span class="tag">auth</span><span class="desc">аутентификация пользователей</span></li>
+          <li><span class="tag">voice</span><span class="desc">голосовой интерфейс</span></li>
+          <li><span class="tag">users</span><span class="desc">реальные пользователи и обратная связь</span></li>
+        </ul>
+      </div>
+    </div>
+    <p class="demo-link">→ oss-copilot-dmitriy-solo.vercel.app</p>
+  </section>
+
+</div>
+
+<div class="navhint">↑ ↓ навигация</div>
+
+<script>
+  (function () {
+    var deck = document.getElementById("deck");
+    var slides = Array.prototype.slice.call(document.querySelectorAll(".slide"));
+    function currentIndex() {
+      var top = deck.scrollTop;
+      var best = 0, bestDist = Infinity;
+      slides.forEach(function (s, i) {
+        var d = Math.abs(s.offsetTop - top);
+        if (d < bestDist) { bestDist = d; best = i; }
+      });
+      return best;
+    }
+    document.addEventListener("keydown", function (e) {
+      if (["ArrowDown", "ArrowRight", "PageDown", " "].indexOf(e.key) !== -1) {
+        e.preventDefault();
+        var i = Math.min(currentIndex() + 1, slides.length - 1);
+        slides[i].scrollIntoView({ behavior: "smooth" });
+      } else if (["ArrowUp", "ArrowLeft", "PageUp"].indexOf(e.key) !== -1) {
+        e.preventDefault();
+        var i2 = Math.max(currentIndex() - 1, 0);
+        slides[i2].scrollIntoView({ behavior: "smooth" });
+      }
+    });
+  })();
+</script>
