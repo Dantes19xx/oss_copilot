@@ -38,7 +38,7 @@ docker compose exec backend python -m backend.graph.run_agent "Review the pull r
 
 ### Веб-интерфейс (Next.js)
 
-`frontend/` — минимальный UI на Next.js 16 (App Router, без стейт-менеджеров, без CSS-фреймворка): одно текстовое поле для свободного запроса ("review this PR" или "I know Python, want to contribute to a CLI tool"), результат или human-in-the-loop запрос (approve/reject или номер кандидата), кнопка "New request". Поверх `backend/app/main.py`, который оборачивает `review_app` (LangGraph) в HTTP:
+`frontend/` — минимальный UI на Next.js 16 (App Router, без стейт-менеджеров, без CSS-фреймворка): одно текстовое поле для свободного запроса ("review this PR" или "I know Python, want to contribute to a CLI tool"), результат или human-in-the-loop запрос (approve/merge/reject или номер кандидата), кнопка "New request". Поверх `backend/app/main.py`, который оборачивает `review_app` (LangGraph) в HTTP:
 
 - `POST /api/agent/start {"message": str}` — стартует граф, возвращает `{status: "interrupt", thread_id, payload}` или `{status: "done", summary}`
 - `POST /api/agent/resume {"thread_id": str, "answer": str}` — резюмирует через `Command(resume=answer)`
@@ -62,6 +62,7 @@ cd frontend && cp .env.local.example .env.local && npm install && npm run dev
 - `get_pr_diff(owner, repo, pr_number)` — diff и метаданные pull request'а
 - `get_pr_files(owner, repo, pr_number, limit)` — patch по каждому файлу PR (для поочерёдного ревью)
 - `post_pr_comment(owner, repo, pr_number, body)` — **write**-инструмент, публикует комментарий; граф вызывает его только после подтверждения человеком
+- `merge_pull_request(owner, repo, pr_number)` — **write**-инструмент, мержит PR; граф вызывает его только после подтверждения человеком (`merge`), и только вслед за публикацией комментария. Если GitHub отказывает в мерже (конфликты, обязательные ревью/чеки не пройдены) — это не ошибка, а обычный результат: `merged: false` с объяснением от GitHub, комментарий при этом уже опубликован
 - `search_github_repos(query, limit)` — поиск репозиториев-кандидатов для контрибьютинга
 - `get_repo_health(owner, repo)` — сигналы дружелюбности к новым контрибьюторам (CONTRIBUTING.md, good-first-issues, активность)
 - `get_good_first_issues(owner, repo, limit)` — список открытых good-first-issue
@@ -108,7 +109,7 @@ review:      fetch_diff --(есть скриншоты в описании PR?)-
                                                                                     retrieve_style_context
              fetch_diff ------------------------------------------------------------------------------↗
              retrieve_style_context -> [analyze_file loop по файлам] -> aggregate_review
-             -> human_confirm --(approve|reject)--> post_comment | discard
+             -> human_confirm --(approve|merge|reject)--> post_comment [--(merge)--> merge_pr] | discard
 
 repo_match:  search_repos -> [score_repo loop по кандидатам] -> present_candidates
              -> human_select --(выбор|skip)--> fetch_good_first_issues | конец
@@ -116,7 +117,7 @@ repo_match:  search_repos -> [score_repo loop по кандидатам] -> pres
 
 - **Ветвление**: `intake` классифицирует свободный текст (structured output, gpt-4o-mini) и определяет, какая ветка выполняется; внутри review-ветки — есть ли изображения в описании PR.
 - **Циклы**: `analyze_file` обходит файлы PR по одному (до 10), `score_repo` считает fit-score для каждого репозитория-кандидата.
-- **Human-in-the-loop**: `human_confirm` и `human_select` останавливают граф через `langgraph.types.interrupt()` и ждут реального ответа человека, прежде чем публиковать комментарий в GitHub или переходить к issue выбранного репозитория.
+- **Human-in-the-loop**: `human_confirm` и `human_select` останавливают граф через `langgraph.types.interrupt()` и ждут реального ответа человека, прежде чем публиковать комментарий в GitHub или переходить к issue выбранного репозитория. Ответ на `human_confirm` строго парсится (`approve`/`merge`/`reject` и явные синонимы) — нераспознанный текст не трактуется молча как `reject`, а переспрашивает через новый `interrupt()` с пояснением, что не понято.
 - **Мультимодальность**: `analyze_screenshots` (`backend/graph/vision.py`) находит скриншоты/GIF в описании PR (markdown-синтаксис, `<img>`, известные asset-хосты GitHub) и анализирует их через vision gpt-4o-mini — находки попадают в финальный ревью-комментарий.
 
 Запуск (интерактивно, с реальным вводом в терминале на шаге human-in-the-loop):

@@ -5,6 +5,8 @@ Exposes GitHub tools used by the LangGraph agent:
 - get_pr_files: fetch a pull request's per-file patches (for a file-by-file review loop)
 - post_pr_comment: post a review comment to a pull request (write — only call after
   human confirmation; the graph gates this behind a human-in-the-loop step)
+- merge_pull_request: merge a pull request (write — only call after human confirmation;
+  the graph gates this behind the same human-in-the-loop step)
 - search_github_repos: find candidate repositories to contribute to
 - get_repo_health: contribution-friendliness signals for a repository
 - get_good_first_issues: list open good-first-issue candidates for a repository
@@ -64,6 +66,15 @@ async def post_pr_comment(owner: str, repo: str, pr_number: int, body: str) -> d
     client = GitHubClient()
     comment = await client.create_issue_comment(owner, repo, pr_number, body)
     return {"id": comment.get("id"), "html_url": comment.get("html_url")}
+
+
+@mcp.tool()
+async def merge_pull_request(owner: str, repo: str, pr_number: int) -> dict:
+    """Merge a pull request. WRITE action — call only after human approval. Returns
+    merged=False with a message (not an error) if GitHub can't merge it yet
+    (conflicts, missing required reviews/checks)."""
+    client = GitHubClient()
+    return await client.merge_pull_request(owner, repo, pr_number)
 
 
 @mcp.tool()

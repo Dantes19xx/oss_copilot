@@ -28,7 +28,7 @@ flowchart TB
     end
 
     subgraph MCP["Own MCP server (backend/mcp_server/)"]
-        Tools["get_pr_diff, get_pr_files, post_pr_comment,<br/>search_github_repos, get_repo_health,<br/>get_good_first_issues"]
+        Tools["get_pr_diff, get_pr_files, post_pr_comment,<br/>merge_pull_request, search_github_repos,<br/>get_repo_health, get_good_first_issues"]
     end
 
     GitHub[["GitHub API"]]
@@ -85,15 +85,23 @@ Walking a single "review this PR" request through the whole stack:
 9. **`human_confirm`** calls `langgraph.types.interrupt()` — this is where node 2's
    `ainvoke()` actually returns, with `{status: "interrupt", payload: {...}}`, back
    through the backend to the frontend.
-10. **Frontend shows the draft** and a text input. The human types "approve" or
-    "reject"; the frontend POSTs `{"thread_id", "answer"}` to `/api/agent/resume`.
+10. **Frontend shows the draft** and a text input. The human types "approve", "merge",
+    or "reject"; the frontend POSTs `{"thread_id", "answer"}` to `/api/agent/resume`.
+    The reply is parsed strictly against known aliases for those three — anything else
+    re-triggers `interrupt()` with an `error` field instead of silently defaulting to
+    "reject" (an earlier bug: any unrecognized reply, e.g. a typo, discarded the review
+    without telling the reviewer why).
 11. **Backend resumes the SAME graph run** via `Command(resume=answer)` against the
     same `thread_id` — LangGraph's checkpointer (`InMemorySaver`) picks up exactly where
-    `human_confirm` left off. `route_after_human_confirm` sends it to `post_comment`
-    (which calls the MCP `post_pr_comment` tool — the one real write to GitHub in the
-    whole system) or `discard`.
+    `human_confirm` left off. `route_after_human_confirm` sends "approve" and "merge"
+    both to `post_comment` (the MCP `post_pr_comment` tool — always the first write to
+    GitHub, so there's a review trail even when merging) and "reject" to `discard`.
+    `route_after_post_comment` then sends "merge" on to `merge_pr` (the MCP
+    `merge_pull_request` tool). GitHub declining to merge — conflicts, unmet required
+    reviews/checks — comes back as data (`merged: false` + message), not an exception:
+    the comment was already posted, so that's a partial success to report, not a crash.
 12. **Final result flows back** through backend → frontend → the user sees the posted
-    comment link or the discard note.
+    comment link, the merge outcome, or the discard note.
 
 Every OpenAI call in steps 3, 5, 6, 7 is traced in LangSmith automatically; every step
 that touches GitHub goes through the MCP tool layer, never a bare `httpx` call from a
@@ -118,8 +126,11 @@ flowchart TB
         analyze_file -->|done| aggregate_review
         route2 -->|no| aggregate_review
         aggregate_review --> human_confirm[["human_confirm<br/>(interrupt)"]]
-        human_confirm -->|approve| post_comment --> END2(["END"])
+        human_confirm -->|approve or merge| post_comment
         human_confirm -->|reject| discard --> END3(["END"])
+        post_comment --> mergeRoute{{"merge?"}}
+        mergeRoute -->|yes| merge_pr --> END7(["END"])
+        mergeRoute -->|no| END2(["END"])
     end
 
     subgraph "repo_match branch"

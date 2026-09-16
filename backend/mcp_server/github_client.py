@@ -40,6 +40,14 @@ class GitHubClient:
             raise GitHubError(f"GitHub API {path} failed: {response.status_code} {response.text[:300]}")
         return response
 
+    async def _put(self, path: str, *, json: dict) -> httpx.Response:
+        # Unlike _get/_post, a merge attempt raising on 4xx would swallow GitHub's actual
+        # reason (not mergeable, conflicts, missing required reviews/checks) into a generic
+        # GitHubError — the caller needs that reason, so this doesn't raise on 4xx/405/409.
+        async with httpx.AsyncClient(base_url=GITHUB_API_URL, headers=self._headers, timeout=20) as client:
+            response = await client.put(path, json=json)
+        return response
+
     async def get_pull_request(self, owner: str, repo: str, pr_number: int) -> dict:
         response = await self._get(f"/repos/{owner}/{repo}/pulls/{pr_number}")
         return response.json()
@@ -112,3 +120,18 @@ class GitHubClient:
             json={"body": body},
         )
         return response.json()
+
+    async def merge_pull_request(
+        self, owner: str, repo: str, pr_number: int, merge_method: str = "merge"
+    ) -> dict:
+        """Merge a pull request. The ordinary "can't merge yet" cases — unmergeable,
+        conflicts, missing required reviews/checks — come back from GitHub as 405/409,
+        so those are reported back as data here, not raised as GitHubError."""
+        response = await self._put(
+            f"/repos/{owner}/{repo}/pulls/{pr_number}/merge",
+            json={"merge_method": merge_method},
+        )
+        data = response.json() if response.content else {}
+        if response.status_code >= 400:
+            return {"merged": False, "message": data.get("message", f"HTTP {response.status_code}")}
+        return {"merged": data.get("merged", False), "message": data.get("message"), "sha": data.get("sha")}

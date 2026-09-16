@@ -11,6 +11,7 @@ type InterruptPayload = {
   candidates?: string;
   instructions?: string;
   security_warning?: string;
+  error?: string;
 };
 
 type AgentResponse = {
@@ -102,6 +103,7 @@ export default function Home() {
       {response?.status === "interrupt" && (
         <section className="interrupt">
           {payload?.security_warning && <div className="warning">⚠️ {payload.security_warning}</div>}
+          {payload?.error && <div className="warning">⚠️ {payload.error}</div>}
           {payload?.pr && <p className="meta">PR: {payload.pr}</p>}
           <pre>{payload?.draft_comment ?? payload?.candidates}</pre>
           <p className="instructions">{payload?.instructions}</p>
@@ -109,7 +111,7 @@ export default function Home() {
             <input
               value={answer}
               onChange={(e) => setAnswer(e.target.value)}
-              placeholder="approve / reject / a number…"
+              placeholder="approve / merge / reject / a number…"
               required
             />
             <button type="submit" disabled={loading || !answer.trim()}>

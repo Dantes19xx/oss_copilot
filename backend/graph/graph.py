@@ -6,7 +6,7 @@
     fetch_diff --(has screenshots?)--> analyze_screenshots --> retrieve_style_context
                 \\----------------------------------------------/
     retrieve_style_context -> [analyze_file loop over files] -> aggregate_review
-    -> human_confirm --(approve|reject)--> post_comment | discard
+    -> human_confirm --(approve|merge|reject)--> post_comment [--(merge only)--> merge_pr] | discard
 
   repo_match branch:
     search_repos -> [score_repo loop over candidates] -> present_candidates
@@ -36,12 +36,14 @@ from backend.graph.nodes_review import (
     discard,
     fetch_diff,
     human_confirm,
+    merge_pr,
     post_comment,
     retrieve_style_context,
     route_after_analyze_file,
     route_after_context,
     route_after_fetch_diff,
     route_after_human_confirm,
+    route_after_post_comment,
 )
 from backend.graph.state import AgentState
 
@@ -56,6 +58,7 @@ _graph.add_node("analyze_file", analyze_file)
 _graph.add_node("aggregate_review", aggregate_review)
 _graph.add_node("human_confirm", human_confirm)
 _graph.add_node("post_comment", post_comment)
+_graph.add_node("merge_pr", merge_pr)
 _graph.add_node("discard", discard)
 
 _graph.add_node("search_repos", search_repos)
@@ -92,9 +95,14 @@ _graph.add_edge("aggregate_review", "human_confirm")
 _graph.add_conditional_edges(
     "human_confirm",
     route_after_human_confirm,
-    {"post": "post_comment", "discard": "discard"},
+    {"post": "post_comment", "merge": "post_comment", "discard": "discard"},
 )
-_graph.add_edge("post_comment", END)
+_graph.add_conditional_edges(
+    "post_comment",
+    route_after_post_comment,
+    {"merge": "merge_pr", "end": END},
+)
+_graph.add_edge("merge_pr", END)
 _graph.add_edge("discard", END)
 
 # --- repo_match branch ---

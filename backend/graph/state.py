@@ -27,7 +27,7 @@ class AgentState(TypedDict, total=False):
     review_comments: list[str]
 
     summary: str
-    human_decision: Literal["approve", "reject"]
+    human_decision: Literal["approve", "reject", "merge"]
     posted: bool
 
     # --- repo_match branch ---

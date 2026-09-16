@@ -249,12 +249,26 @@ async def aggregate_review(state: AgentState) -> dict:
     return {"summary": summary}
 
 
+_DECISION_ALIASES = {
+    "approve": "approve", "yes": "approve", "y": "approve",
+    "reject": "reject", "no": "reject", "n": "reject",
+    "merge": "merge", "m": "merge",
+}
+
+
+def _normalize_decision(decision: object) -> str | None:
+    return _DECISION_ALIASES.get(str(decision).strip().lower())
+
+
 async def human_confirm(state: AgentState) -> dict:
     payload = {
         "type": "review_confirmation",
         "pr": f"{state['owner']}/{state['repo']}#{state['pr_number']}",
         "draft_comment": state["summary"],
-        "instructions": "Reply 'approve' to post this as a PR comment on GitHub, or 'reject' to discard it.",
+        "instructions": (
+            "Reply 'approve' to post this as a PR comment on GitHub, 'merge' to post it and "
+            "then merge the PR, or 'reject' to discard it."
+        ),
     }
     if state.get("injection_warnings"):
         payload["security_warning"] = (
@@ -264,12 +278,18 @@ async def human_confirm(state: AgentState) -> dict:
         )
 
     decision = interrupt(payload)
-    approved = str(decision).strip().lower() in ("approve", "yes", "y")
-    return {"human_decision": "approve" if approved else "reject"}
+    normalized = _normalize_decision(decision)
+    # Anything unrecognized used to silently fall through to "reject" — re-prompt instead,
+    # so a typo or an out-of-scope word (like "merge" before this tool existed) doesn't
+    # quietly discard a review the reviewer meant to act on.
+    while normalized is None:
+        decision = interrupt({**payload, "error": f"Unrecognized reply '{decision}'. Reply 'approve', 'merge', or 'reject'."})
+        normalized = _normalize_decision(decision)
+    return {"human_decision": normalized}
 
 
 def route_after_human_confirm(state: AgentState) -> str:
-    return "post" if state["human_decision"] == "approve" else "discard"
+    return "discard" if state["human_decision"] == "reject" else "post"
 
 
 async def post_comment(state: AgentState) -> dict:
@@ -278,6 +298,25 @@ async def post_comment(state: AgentState) -> dict:
         {"owner": state["owner"], "repo": state["repo"], "pr_number": state["pr_number"], "body": state["summary"]},
     )
     return {"posted": True, "summary": state["summary"] + f"\n\n(Posted: {result.get('html_url')})"}
+
+
+def route_after_post_comment(state: AgentState) -> str:
+    return "merge" if state["human_decision"] == "merge" else "end"
+
+
+async def merge_pr(state: AgentState) -> dict:
+    result = await call_tool(
+        "merge_pull_request",
+        {"owner": state["owner"], "repo": state["repo"], "pr_number": state["pr_number"]},
+    )
+    if result.get("merged"):
+        note = f"\n\n(Merged: {(result.get('sha') or '')[:7]})"
+    else:
+        # Not mergeable (conflicts, required reviews/checks, etc.) is an expected outcome,
+        # not a crash — the comment above was still posted, so report this as a follow-up
+        # fact rather than failing the whole request.
+        note = f"\n\n(Not merged: {result.get('message', 'GitHub declined the merge')})"
+    return {"summary": state["summary"] + note}
 
 
 async def discard(state: AgentState) -> dict:
