@@ -90,6 +90,12 @@ PYTHONPATH=. python -m backend.rag.ingest <owner> <repo>
 
 После этого `backend/graph/graph.py` автоматически подтягивает релевантный контекст в узле `retrieve_style_context` перед ревью. Если документы для репозитория не проиндексированы, граф не падает — просто ревьюит без грaундинга.
 
+**Свой PDF/DOCX style-guide** (`backend/rag/document_ingest.py`) — команда часто держит внутренние стандарты кодирования отдельным документом (PDF/DOCX), а не в `CONTRIBUTING.md` целевого репозитория. Загружается в ту же коллекцию `repo_docs`, тем же `retrieve_style_context` — без единой правки в графе или ретривале:
+
+```bash
+PYTHONPATH=. python -m backend.rag.document_ingest <owner> <repo> path/to/style-guide.pdf   # или .docx
+```
+
 ### Граф (LangGraph): ветвления, циклы, human-in-the-loop
 
 `backend/graph/graph.py` — один `StateGraph` с реальной условной логикой:

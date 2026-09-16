@@ -12,5 +12,7 @@ qdrant-client
 mcp
 tiktoken
 openai
+pypdf
+python-docx
 
 httpx

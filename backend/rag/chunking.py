@@ -48,3 +48,11 @@ def chunk_markdown(text: str) -> list[str]:
     for section in sections:
         chunks.extend(_split_fixed(section))
     return [c for c in chunks if c.strip()]
+
+
+def chunk_document(text: str) -> list[str]:
+    """Chunk plain text extracted from a PDF/DOCX style guide (backend/rag/
+    document_ingest.py) into the same fixed token windows chunk_markdown falls back to.
+    No header-based first pass here — PDF/DOCX text extraction doesn't reliably
+    preserve markdown-style heading structure to split on."""
+    return [c for c in _split_fixed(text) if c.strip()]
