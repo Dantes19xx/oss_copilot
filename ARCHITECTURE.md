@@ -143,7 +143,7 @@ API layer only need to handle one generic "interrupt / resume" shape, not two.
 | Component | Independent? | Notes |
 |---|---|---|
 | LLM provider | Mostly | Every call goes through `langchain_openai.ChatOpenAI` with a `model=` string — swapping to Anthropic/Gemini means changing the import and the model string, not the graph logic. Actually exercised in stage 10's A/B test (gpt-4o-mini vs gpt-4o) with zero graph changes. |
-| Vector DB (Qdrant) | Yes, behind `backend/rag/vector_store.py` | Nothing outside that one file knows it's Qdrant specifically — `search`/`upsert_chunks`/`ensure_collection` are the only surface other code touches. |
+| Vector DB (Qdrant) | Yes, behind `backend/rag/vector_store.py` | Nothing outside that one file knows it's Qdrant specifically — `search`/`upsert_chunks`/`ensure_collection` are the only surface other code touches. Confirmed by a second, independently-added ingest path: `backend/rag/document_ingest.py` (PDF/DOCX style guides) goes through the exact same `upsert_chunks`/collection, so `retrieve_style_context` didn't need a single line changed to start grounding reviews in an uploaded style guide alongside README/CONTRIBUTING. |
 | GitHub | **Deliberately coupled** | The MCP tool layer's tool *signatures* (`get_pr_diff`, `post_pr_comment`, etc.) are GitHub-shaped on purpose — swapping to GitLab would mean rewriting `backend/mcp_server/github_client.py` and the tool bodies, not just a config value. This was a conscious choice: building a provider-agnostic abstraction with only one real backend (GitHub) would have been speculative generality with no second caller to validate it against. |
 | MCP server ↔ graph | Loosely coupled by protocol, tightly coupled by tool names | `backend/graph/mcp_client.py` talks to the server through the real MCP protocol (not a direct function import), so the server could run as a separate process/deployment without any graph code changing — but the graph's node functions hardcode the specific tool names and argument shapes, so the two still can't evolve independently without coordination. |
 | Frontend ↔ backend | Yes | Plain HTTP + JSON, generic interrupt/resume shape (§4) — the frontend has no knowledge of what `review_confirmation` vs `repo_selection` payloads mean beyond displaying `draft_comment`/`candidates` and `instructions`. A different frontend (mobile app, CLI) could drive the same two endpoints unmodified. |
@@ -158,6 +158,11 @@ actually made and tested:
   and the actual empirical A/B result — EVALS.md §7.
 - **Chunking/embedding/vector DB choices for RAG** — PLAN.md §2.2, pipeline built in
   PROGRESS.md stage 4.
+- **Document parsing beyond Markdown (PDF/DOCX)** — done: `backend/rag/document_ingest.py`,
+  PROGRESS.md 2026-09-16. The stage-4 RAG pipeline only ever parsed plain Markdown
+  (README/CONTRIBUTING via the GitHub API) — this was a real, separate gap against the
+  ТЗ's document-processing requirement (distinct from the RAG-pipeline requirement
+  itself) until an explicit audit against the checklist caught it.
 - **Temperature/max_tokens/top_p** — decided from real experiment data, not guessed —
   EVALS.md §8.
 - **Why exact-match caching, not semantic caching** — `backend/graph/cache.py`
