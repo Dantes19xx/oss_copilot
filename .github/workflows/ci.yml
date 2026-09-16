@@ -24,6 +24,7 @@ jobs:
           import backend.rag.embeddings
           import backend.graph.guardrails
           import backend.graph.cache
+          import backend.rag.document_ingest
           print('all key modules import cleanly')
           "
 
