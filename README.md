@@ -38,7 +38,7 @@ docker compose exec backend python -m backend.graph.run_agent "Review the pull r
 
 ### Веб-интерфейс (Next.js)
 
-`frontend/` — минимальный UI на Next.js 16 (App Router, без стейт-менеджеров, без CSS-фреймворка): одно текстовое поле для свободного запроса ("review this PR" или "I know Python, want to contribute to a CLI tool"), результат или human-in-the-loop запрос (approve/merge/reject или номер кандидата), кнопка "New request". Поверх `backend/app/main.py`, который оборачивает `review_app` (LangGraph) в HTTP:
+`frontend/` — UI на Next.js 16 (App Router, без стейт-менеджеров, без CSS-фреймворка — своя тёмная тема на CSS-переменных, JetBrains Mono/IBM Plex Sans+Mono, та же палитра, что в презентации защиты): одно текстовое поле для свободного запроса ("review this PR" или "I know Python, want to contribute to a CLI tool"), переключатель языка ответа (RU/EN, сохраняется в `localStorage`, передаётся один раз при старте запроса), карточка human-in-the-loop с быстрыми кнопками под тип прерывания (Approve/Approve & merge/Reject для ревью, номера кандидатов + Skip для подбора репозитория, Skip для уточняющего вопроса) плюс свободный текстовый ответ как запасной путь, кнопка "New request". Поверх `backend/app/main.py`, который оборачивает `review_app` (LangGraph) в HTTP:
 
 - `POST /api/agent/start {"message": str}` — стартует граф, возвращает `{status: "interrupt", thread_id, payload}` или `{status: "done", summary}`
 - `POST /api/agent/resume {"thread_id": str, "answer": str}` — резюмирует через `Command(resume=answer)`
@@ -111,13 +111,16 @@ review:      fetch_diff --(есть скриншоты в описании PR?)-
              retrieve_style_context -> [analyze_file loop по файлам] -> aggregate_review
              -> human_confirm --(approve|merge|reject)--> post_comment [--(merge)--> merge_pr] | discard
 
-repo_match:  search_repos -> [score_repo loop по кандидатам] -> present_candidates
+repo_match:  [clarify_repo_match loop: до 2 уточняющих вопросов] -> search_repos
+             -> [score_repo loop по кандидатам] -> present_candidates
              -> human_select --(выбор|skip)--> fetch_good_first_issues | конец
 ```
 
 - **Ветвление**: `intake` классифицирует свободный текст (structured output, gpt-4o-mini) и определяет, какая ветка выполняется; внутри review-ветки — есть ли изображения в описании PR.
 - **Циклы**: `analyze_file` обходит файлы PR по одному (до 10), `score_repo` считает fit-score для каждого репозитория-кандидата.
 - **Human-in-the-loop**: `human_confirm` и `human_select` останавливают граф через `langgraph.types.interrupt()` и ждут реального ответа человека, прежде чем публиковать комментарий в GitHub или переходить к issue выбранного репозитория. Ответ на `human_confirm` строго парсится (`approve`/`merge`/`reject` и явные синонимы) — нераспознанный текст не трактуется молча как `reject`, а переспрашивает через новый `interrupt()` с пояснением, что не понято.
+- **Уточняющие вопросы (`clarify_repo_match`)**: перед поиском репозиториев граф решает (structured output, gpt-4o-mini), достаточно ли сигнала в запросе для хорошего поиска — если нет, задаёт один короткий уточняющий вопрос через `interrupt()` (предпочитаемый язык, размер проекта, тема) и зацикливается сам на себя, пока не наберёт достаточно контекста или не исчерпает лимит (`MAX_CLARIFY_TURNS = 2`, ограниченный цикл — как и остальные циклы в графе). Ответ `skip` в любой момент завершает уточнение немедленно и идёт в поиск с тем, что уже есть.
+- **Язык ответа**: `language` (`ru`/`en`) передаётся один раз в начале (`AgentState["language"]`) и используется во всех узлах графа — как в детерминированных строках (инструкции, статусы), так и в системных промптах LLM-вызовов (ревью файлов, уточняющие вопросы). Данные, пришедшие напрямую из GitHub API (имена репозиториев, описания, файлы), не переводятся — переводится только собственный текст агента.
 - **Мультимодальность**: `analyze_screenshots` (`backend/graph/vision.py`) находит скриншоты/GIF в описании PR (markdown-синтаксис, `<img>`, известные asset-хосты GitHub) и анализирует их через vision gpt-4o-mini — находки попадают в финальный ревью-комментарий.
 
 Запуск (интерактивно, с реальным вводом в терминале на шаге human-in-the-loop):

@@ -9,6 +9,7 @@ from langgraph.types import interrupt
 
 from backend.graph.cache import FileCache
 from backend.graph.guardrails import redact_secrets, scan_for_prompt_injection
+from backend.graph.i18n import LANGUAGE_NAME, t
 from backend.graph.mcp_client import call_tool
 from backend.graph.schemas import FileReviewOutput
 from backend.graph.state import AgentState
@@ -103,6 +104,7 @@ async def review_file(
     temperature: float = FILE_REVIEW_TEMPERATURE,
     return_usage: bool = False,
     timeout: float | None = None,
+    language: str = "en",
 ) -> FileReviewOutput | tuple[FileReviewOutput, dict]:
     """The actual per-file review call — used by the graph node below AND by
     backend/evals/run_evals.py + run_ab.py + run_temperature.py, so evals score the real
@@ -110,15 +112,19 @@ async def review_file(
     `return_usage`, and `timeout` exist for those eval harnesses and for
     _review_with_fallback below to swap configs and capture cost/latency; the graph
     node calls that matter for normal operation never override them, so behavior there
-    is unchanged."""
+    is unchanged. `language` defaults to "en" so eval runs (which never pass it) score
+    the same English prompt they always have."""
     context = context or []
     context_block = (
         "\n\n".join(f"[project doc excerpt {i + 1}]\n{c}" for i, c in enumerate(context))
         if context
         else "(no project documentation indexed for this repo)"
     )
+    system_prompt = FILE_REVIEW_SYSTEM_PROMPT
+    if language != "en":
+        system_prompt += f"\n\nWrite your comments in {LANGUAGE_NAME.get(language, language)}."
     messages = [
-        ("system", FILE_REVIEW_SYSTEM_PROMPT),
+        ("system", system_prompt),
         (
             "human",
             f"File: {filename} ({status})\n\nProject conventions:\n{context_block}\n\nPatch:\n{patch}",
@@ -163,10 +169,17 @@ logger = logging.getLogger(__name__)
 
 
 async def _review_with_fallback(
-    filename: str, status: str, patch: str, context: list[str], primary_timeout: float = PRIMARY_TIMEOUT_S
+    filename: str,
+    status: str,
+    patch: str,
+    context: list[str],
+    primary_timeout: float = PRIMARY_TIMEOUT_S,
+    language: str = "en",
 ) -> list[str]:
     try:
-        result = await review_file(filename, status, patch, context, model=PRIMARY_MODEL, timeout=primary_timeout)
+        result = await review_file(
+            filename, status, patch, context, model=PRIMARY_MODEL, timeout=primary_timeout, language=language
+        )
     except _RETRYABLE_ERRORS as e:
         logger.warning(
             "primary model %s failed reviewing %s (%s: %s) — falling back to %s",
@@ -176,7 +189,7 @@ async def _review_with_fallback(
             e,
             FALLBACK_MODEL,
         )
-        result = await review_file(filename, status, patch, context, model=FALLBACK_MODEL)
+        result = await review_file(filename, status, patch, context, model=FALLBACK_MODEL, language=language)
     return result.comments
 
 
@@ -203,6 +216,7 @@ async def analyze_file(state: AgentState) -> dict:
     patch = file.get("patch")
     if patch:
         context = state.get("style_context") or []
+        language = state.get("language", "en")
         cache_key = (
             _review_prompt_version,
             PRIMARY_MODEL,
@@ -212,10 +226,11 @@ async def analyze_file(state: AgentState) -> dict:
             file["status"],
             patch,
             context,
+            language,
         )
 
         async def _compute() -> list[str]:
-            return await _review_with_fallback(file["filename"], file["status"], patch, context)
+            return await _review_with_fallback(file["filename"], file["status"], patch, context, language=language)
 
         cached_comments = await _review_cache.get_or_compute(cache_key, _compute)
         comments.extend(f"{file['filename']}: {c}" for c in cached_comments)
@@ -228,18 +243,19 @@ def route_after_analyze_file(state: AgentState) -> str:
 
 
 async def aggregate_review(state: AgentState) -> dict:
+    lang = state.get("language")
     comments = state.get("review_comments", [])
     changed = state.get("changed_files", len(state.get("file_diffs", [])))
     if comments:
-        summary = f"Reviewed {changed} file(s). Found {len(comments)} issue(s):\n" + "\n".join(
+        summary = t(lang, "reviewed_with_issues", n=changed, m=len(comments)) + "\n" + "\n".join(
             f"- {c}" for c in comments
         )
     else:
-        summary = f"Reviewed {changed} file(s). No issues found."
+        summary = t(lang, "reviewed_clean", n=changed)
 
     image_notes = state.get("image_analysis") or []
     if image_notes:
-        summary += "\n\nScreenshot/attachment analysis:\n" + "\n".join(f"- {n}" for n in image_notes)
+        summary += t(lang, "screenshot_analysis_header") + "\n" + "\n".join(f"- {n}" for n in image_notes)
 
     # Redact secret-shaped substrings before this ever reaches a human preview or a
     # public GitHub comment — even a comment correctly flagging "this file has a
@@ -261,21 +277,15 @@ def _normalize_decision(decision: object) -> str | None:
 
 
 async def human_confirm(state: AgentState) -> dict:
+    lang = state.get("language")
     payload = {
         "type": "review_confirmation",
         "pr": f"{state['owner']}/{state['repo']}#{state['pr_number']}",
         "draft_comment": state["summary"],
-        "instructions": (
-            "Reply 'approve' to post this as a PR comment on GitHub, 'merge' to post it and "
-            "then merge the PR, or 'reject' to discard it."
-        ),
+        "instructions": t(lang, "confirm_instructions"),
     }
     if state.get("injection_warnings"):
-        payload["security_warning"] = (
-            "This PR's diff/description contains text matching known prompt-injection patterns: "
-            f"{state['injection_warnings']}. Review the draft comment carefully before approving — "
-            "the model was instructed to treat this as untrusted content, not as commands."
-        )
+        payload["security_warning"] = t(lang, "security_warning", warnings=state["injection_warnings"])
 
     decision = interrupt(payload)
     normalized = _normalize_decision(decision)
@@ -283,7 +293,7 @@ async def human_confirm(state: AgentState) -> dict:
     # so a typo or an out-of-scope word (like "merge" before this tool existed) doesn't
     # quietly discard a review the reviewer meant to act on.
     while normalized is None:
-        decision = interrupt({**payload, "error": f"Unrecognized reply '{decision}'. Reply 'approve', 'merge', or 'reject'."})
+        decision = interrupt({**payload, "error": t(lang, "confirm_unrecognized", decision=decision)})
         normalized = _normalize_decision(decision)
     return {"human_decision": normalized}
 
@@ -297,7 +307,8 @@ async def post_comment(state: AgentState) -> dict:
         "post_pr_comment",
         {"owner": state["owner"], "repo": state["repo"], "pr_number": state["pr_number"], "body": state["summary"]},
     )
-    return {"posted": True, "summary": state["summary"] + f"\n\n(Posted: {result.get('html_url')})"}
+    suffix = t(state.get("language"), "posted_suffix", url=result.get("html_url"))
+    return {"posted": True, "summary": state["summary"] + suffix}
 
 
 def route_after_post_comment(state: AgentState) -> str:
@@ -305,19 +316,21 @@ def route_after_post_comment(state: AgentState) -> str:
 
 
 async def merge_pr(state: AgentState) -> dict:
+    lang = state.get("language")
     result = await call_tool(
         "merge_pull_request",
         {"owner": state["owner"], "repo": state["repo"], "pr_number": state["pr_number"]},
     )
     if result.get("merged"):
-        note = f"\n\n(Merged: {(result.get('sha') or '')[:7]})"
+        note = t(lang, "merged_suffix", sha=(result.get("sha") or "")[:7])
     else:
         # Not mergeable (conflicts, required reviews/checks, etc.) is an expected outcome,
         # not a crash — the comment above was still posted, so report this as a follow-up
         # fact rather than failing the whole request.
-        note = f"\n\n(Not merged: {result.get('message', 'GitHub declined the merge')})"
+        note = t(lang, "not_merged_suffix", message=result.get("message") or "GitHub declined the merge")
     return {"summary": state["summary"] + note}
 
 
 async def discard(state: AgentState) -> dict:
-    return {"posted": False, "summary": state["summary"] + "\n\n(Discarded by reviewer — not posted to GitHub.)"}
+    suffix = t(state.get("language"), "discarded_suffix")
+    return {"posted": False, "summary": state["summary"] + suffix}

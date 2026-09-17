@@ -4,6 +4,7 @@ from typing import Literal, TypedDict
 class AgentState(TypedDict, total=False):
     # input
     user_request: str
+    language: Literal["ru", "en"]
 
     # intake / routing
     mode: Literal["review", "repo_match", "unclear"]
@@ -32,6 +33,9 @@ class AgentState(TypedDict, total=False):
 
     # --- repo_match branch ---
     search_query: str
+    clarify_history: list[str]
+    clarify_turns: int
+    clarify_done: bool
     candidates: list[dict]
     candidate_index: int
     scored_candidates: list[dict]

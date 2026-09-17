@@ -1,14 +1,17 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
+import { detectDefaultLang, Lang, UI } from "./i18n";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const LANG_STORAGE_KEY = "oss-copilot-lang";
 
 type InterruptPayload = {
   type?: string;
   pr?: string;
   draft_comment?: string;
   candidates?: string;
+  question?: string;
   instructions?: string;
   security_warning?: string;
   error?: string;
@@ -21,12 +24,68 @@ type AgentResponse = {
   summary?: string | null;
 };
 
+function candidateNumbers(text?: string): number[] {
+  if (!text) return [];
+  return text
+    .split("\n")
+    .map((line) => line.trim().match(/^(\d+)\./))
+    .filter((m): m is RegExpMatchArray => m !== null)
+    .map((m) => Number(m[1]));
+}
+
+function Dots() {
+  return (
+    <span className="loading-dots" aria-hidden="true">
+      <span />
+      <span />
+      <span />
+    </span>
+  );
+}
+
+function WarningIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="banner-icon" aria-hidden="true">
+      <path
+        d="M8 1.5 15 14H1L8 1.5Z"
+        stroke="currentColor"
+        strokeWidth="1.3"
+        strokeLinejoin="round"
+      />
+      <path d="M8 6v3.2" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+      <circle cx="8" cy="11.6" r="0.9" fill="currentColor" />
+    </svg>
+  );
+}
+
 export default function Home() {
+  const [lang, setLang] = useState<Lang>("en");
   const [message, setMessage] = useState("");
   const [answer, setAnswer] = useState("");
   const [response, setResponse] = useState<AgentResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let stored: string | null = null;
+    try {
+      stored = window.localStorage.getItem(LANG_STORAGE_KEY);
+    } catch {
+      // localStorage unavailable (private mode, etc.) — fall back to detection below
+    }
+    setLang(stored === "ru" || stored === "en" ? stored : detectDefaultLang());
+  }, []);
+
+  const ui = UI[lang];
+
+  function chooseLang(next: Lang) {
+    setLang(next);
+    try {
+      window.localStorage.setItem(LANG_STORAGE_KEY, next);
+    } catch {
+      // best-effort persistence only
+    }
+  }
 
   async function post(path: string, body: unknown): Promise<AgentResponse> {
     const res = await fetch(`${API_URL}${path}`, {
@@ -42,10 +101,11 @@ export default function Home() {
 
   async function handleStart(e: FormEvent) {
     e.preventDefault();
+    if (!message.trim() || loading) return;
     setLoading(true);
     setError(null);
     try {
-      setResponse(await post("/api/agent/start", { message }));
+      setResponse(await post("/api/agent/start", { message, language: lang }));
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -53,19 +113,24 @@ export default function Home() {
     }
   }
 
-  async function handleResume(e: FormEvent) {
-    e.preventDefault();
-    if (!response) return;
+  async function submitAnswer(value: string) {
+    if (!response || loading) return;
     setLoading(true);
     setError(null);
     try {
-      setResponse(await post("/api/agent/resume", { thread_id: response.thread_id, answer }));
+      setResponse(await post("/api/agent/resume", { thread_id: response.thread_id, answer: value }));
       setAnswer("");
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setLoading(false);
     }
+  }
+
+  function handleResume(e: FormEvent) {
+    e.preventDefault();
+    if (!answer.trim()) return;
+    submitAnswer(answer.trim());
   }
 
   function handleReset() {
@@ -76,59 +141,176 @@ export default function Home() {
   }
 
   const payload = response?.payload;
+  const kind = payload?.type;
+  const candidates = kind === "repo_selection" ? candidateNumbers(payload?.candidates) : [];
+
+  const kickerLabel =
+    kind === "review_confirmation"
+      ? ui.kickerReview
+      : kind === "repo_selection"
+        ? ui.kickerRepo
+        : kind === "clarifying_question"
+          ? ui.kickerClarify
+          : ui.kickerWorking;
 
   return (
-    <main>
-      <h1>OSS Copilot</h1>
-      <p className="subtitle">
-        Ask it to review a GitHub pull request, or describe your skills/interests to find one to
-        contribute to.
-      </p>
-
-      {!response && (
-        <form onSubmit={handleStart}>
-          <textarea
-            value={message}
-            onChange={(e) => setMessage(e.target.value)}
-            placeholder="e.g. Review the pull request https://github.com/owner/repo/pull/123"
-            rows={4}
-            required
-          />
-          <button type="submit" disabled={loading || !message.trim()}>
-            {loading ? "Working…" : "Submit"}
-          </button>
-        </form>
-      )}
-
-      {response?.status === "interrupt" && (
-        <section className="interrupt">
-          {payload?.security_warning && <div className="warning">⚠️ {payload.security_warning}</div>}
-          {payload?.error && <div className="warning">⚠️ {payload.error}</div>}
-          {payload?.pr && <p className="meta">PR: {payload.pr}</p>}
-          <pre>{payload?.draft_comment ?? payload?.candidates}</pre>
-          <p className="instructions">{payload?.instructions}</p>
-          <form onSubmit={handleResume}>
-            <input
-              value={answer}
-              onChange={(e) => setAnswer(e.target.value)}
-              placeholder="approve / merge / reject / a number…"
-              required
-            />
-            <button type="submit" disabled={loading || !answer.trim()}>
-              {loading ? "Working…" : "Send"}
+    <div className="page">
+      <header className="topbar">
+        <div className="brand">
+          <span className="brand-mark">$</span>OSS Copilot
+        </div>
+        {!response ? (
+          <div className="lang-toggle" role="group" aria-label="Language">
+            <button type="button" data-active={lang === "ru"} onClick={() => chooseLang("ru")}>
+              RU
             </button>
-          </form>
-        </section>
-      )}
+            <button type="button" data-active={lang === "en"} onClick={() => chooseLang("en")}>
+              EN
+            </button>
+          </div>
+        ) : (
+          <span className="lang-pill">{lang.toUpperCase()}</span>
+        )}
+      </header>
 
-      {response?.status === "done" && (
-        <section className="result">
-          <pre>{response.summary}</pre>
-          <button onClick={handleReset}>New request</button>
-        </section>
-      )}
+      <main>
+        {!response && (
+          <section className="intro">
+            <h1>{ui.headline}</h1>
+            <p className="subtitle">{ui.subtitle}</p>
+            <form className="composer" onSubmit={handleStart}>
+              <textarea
+                value={message}
+                onChange={(e) => setMessage(e.target.value)}
+                placeholder={ui.placeholder}
+                rows={4}
+                required
+              />
+              <div className="composer-footer">
+                <div className="examples">
+                  <span className="examples-label">{ui.examplesLabel}</span>
+                  <button type="button" className="chip" onClick={() => setMessage(ui.example1)}>
+                    {ui.example1Label}
+                  </button>
+                  <button type="button" className="chip" onClick={() => setMessage(ui.example2)}>
+                    {ui.example2Label}
+                  </button>
+                </div>
+                <button type="submit" className="btn btn-primary" disabled={loading || !message.trim()}>
+                  {loading ? (
+                    <>
+                      {ui.working}
+                      <Dots />
+                    </>
+                  ) : (
+                    ui.submit
+                  )}
+                </button>
+              </div>
+            </form>
+          </section>
+        )}
 
-      {error && <p className="error">{error}</p>}
-    </main>
+        {response?.status === "interrupt" && (
+          <section className="card" data-kind={kind}>
+            <span className="card-kicker">
+              <span className="card-kicker-dot" />
+              {kickerLabel}
+            </span>
+
+            {payload?.security_warning && (
+              <div className="banner banner-warning">
+                <WarningIcon />
+                <span>{payload.security_warning}</span>
+              </div>
+            )}
+            {payload?.error && (
+              <div className="banner banner-error">
+                <WarningIcon />
+                <span>{payload.error}</span>
+              </div>
+            )}
+
+            {payload?.pr && <p className="meta">{payload.pr}</p>}
+
+            {kind === "clarifying_question" ? (
+              <p className="question">{payload?.question}</p>
+            ) : (
+              <pre className="draft">{payload?.draft_comment ?? payload?.candidates}</pre>
+            )}
+
+            {kind === "review_confirmation" && (
+              <div className="quick-actions">
+                <button className="btn btn-primary" disabled={loading} onClick={() => submitAnswer("approve")}>
+                  {ui.approve}
+                </button>
+                <button className="btn btn-ghost" disabled={loading} onClick={() => submitAnswer("merge")}>
+                  {ui.merge}
+                </button>
+                <button className="btn btn-danger" disabled={loading} onClick={() => submitAnswer("reject")}>
+                  {ui.reject}
+                </button>
+              </div>
+            )}
+
+            {kind === "repo_selection" && candidates.length > 0 && (
+              <div className="chip-row">
+                {candidates.map((n) => (
+                  <button key={n} className="chip" disabled={loading} onClick={() => submitAnswer(String(n))}>
+                    #{n}
+                  </button>
+                ))}
+                <button className="chip" disabled={loading} onClick={() => submitAnswer("skip")}>
+                  {ui.skip}
+                </button>
+              </div>
+            )}
+
+            {kind === "clarifying_question" && (
+              <div className="quick-actions">
+                <button className="btn btn-ghost" disabled={loading} onClick={() => submitAnswer("skip")}>
+                  {ui.skip}
+                </button>
+              </div>
+            )}
+
+            <p className="instructions">{payload?.instructions}</p>
+
+            <form className="inline-form" onSubmit={handleResume}>
+              <input
+                type="text"
+                value={answer}
+                onChange={(e) => setAnswer(e.target.value)}
+                placeholder={ui.answerPlaceholder}
+                required
+              />
+              <button type="submit" className="btn btn-ghost" disabled={loading || !answer.trim()}>
+                {loading ? <Dots /> : ui.send}
+              </button>
+            </form>
+          </section>
+        )}
+
+        {response?.status === "done" && (
+          <section className="card result-card">
+            <span className="card-kicker">
+              <span className="card-kicker-dot" />
+              {ui.kickerResult}
+            </span>
+            <pre className="draft">{response.summary}</pre>
+            <button className="btn btn-ghost" onClick={handleReset}>
+              {ui.newRequest}
+            </button>
+          </section>
+        )}
+
+        {error && (
+          <div className="banner banner-error">
+            <WarningIcon />
+            <span>{error}</span>
+          </div>
+        )}
+      </main>
+    </div>
   );
 }

@@ -64,7 +64,7 @@ Walking a single "review this PR" request through the whole stack:
    gpt-4o-mini with structured output, asking it to classify the request and pull out
    `owner`/`repo`/`pr_number` (or a search query, for the other branch). This is the
    graph's one real branch point: `route_after_intake` sends execution to `fetch_diff`
-   (review), `search_repos` (repo_match), or straight to `END` (unclear).
+   (review), `clarify_repo_match` (repo_match), or straight to `END` (unclear).
 4. **`fetch_diff`** calls the MCP tools `get_pr_diff` and `get_pr_files` — through
    `backend/graph/mcp_client.py`, which holds an in-process `mcp.Client` bound to the
    server object directly (no subprocess, no network hop: same process, real MCP
@@ -113,7 +113,7 @@ graph node.
 flowchart TB
     intake{{"intake<br/>(classify free text)"}}
     intake -->|review| fetch_diff
-    intake -->|repo_match| search_repos
+    intake -->|repo_match| clarify_repo_match
     intake -->|unclear| END1(["END"])
 
     subgraph "review branch"
@@ -134,6 +134,9 @@ flowchart TB
     end
 
     subgraph "repo_match branch"
+        clarify_repo_match[["clarify_repo_match<br/>(interrupt, optional)"]]
+        clarify_repo_match -->|"ask another question<br/>(loop, max 2)"| clarify_repo_match
+        clarify_repo_match -->|"enough signal"| search_repos
         search_repos --> route3{{"any candidates?"}}
         route3 -->|no| END4(["END"])
         route3 -->|yes| score_repo
@@ -144,10 +147,14 @@ flowchart TB
     end
 ```
 
-Both loops are bounded (files capped at 10 in `fetch_diff`; candidates capped at 5 in
-`search_repos`), so neither can run away. Both interrupts use the identical mechanism
-(`langgraph.types.interrupt()` + `Command(resume=...)`), so the frontend and the HTTP
-API layer only need to handle one generic "interrupt / resume" shape, not two.
+All three loops are bounded (files capped at 10 in `fetch_diff`; candidates capped at 5
+in `search_repos`; clarifying questions capped at `MAX_CLARIFY_TURNS = 2` in
+`clarify_repo_match`), so none can run away. All three interrupts use the identical
+mechanism (`langgraph.types.interrupt()` + `Command(resume=...)`), so the frontend and
+the HTTP API layer only need to handle one generic "interrupt / resume" shape, not
+three — they switch on `payload["type"]` (`review_confirmation` / `repo_selection` /
+`clarifying_question`) purely for presentation (icon, quick-action buttons), never for
+control flow.
 
 ## 5. Component independence and where coupling was chosen on purpose
 

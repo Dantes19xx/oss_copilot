@@ -1,5 +1,6 @@
 from langchain_openai import ChatOpenAI
 
+from backend.graph.i18n import t
 from backend.graph.schemas import IntakeOutput
 from backend.graph.state import AgentState
 
@@ -35,12 +36,7 @@ async def intake(state: AgentState) -> dict:
         }
     if result.mode == "repo_match" and result.search_query:
         return {"mode": "repo_match", "search_query": result.search_query}
-    return {
-        "mode": "unclear",
-        "summary": "Could not determine whether this is a PR review request or a repo-matching "
-        "request. Please include a PR URL (owner/repo/pull/number), or describe your skills "
-        "and interests for repo matching.",
-    }
+    return {"mode": "unclear", "summary": t(state.get("language"), "unclear_summary")}
 
 
 def route_after_intake(state: AgentState) -> str:

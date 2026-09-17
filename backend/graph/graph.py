@@ -9,7 +9,8 @@
     -> human_confirm --(approve|merge|reject)--> post_comment [--(merge only)--> merge_pr] | discard
 
   repo_match branch:
-    search_repos -> [score_repo loop over candidates] -> present_candidates
+    [clarify_repo_match loop: up to 2 guiding questions] -> search_repos
+    -> [score_repo loop over candidates] -> present_candidates
     -> human_select --(picked|skip)--> fetch_good_first_issues | END
 
 See PLAN.md section 1.1 for the design and PROGRESS.md for what's verified.
@@ -20,9 +21,11 @@ from langgraph.graph import END, StateGraph
 
 from backend.graph.nodes_intake import intake, route_after_intake
 from backend.graph.nodes_repo_match import (
+    clarify_repo_match,
     fetch_good_first_issues,
     human_select,
     present_candidates,
+    route_after_clarify,
     route_after_human_select,
     route_after_score_repo,
     route_after_search,
@@ -61,6 +64,7 @@ _graph.add_node("post_comment", post_comment)
 _graph.add_node("merge_pr", merge_pr)
 _graph.add_node("discard", discard)
 
+_graph.add_node("clarify_repo_match", clarify_repo_match)
 _graph.add_node("search_repos", search_repos)
 _graph.add_node("score_repo", score_repo)
 _graph.add_node("present_candidates", present_candidates)
@@ -71,7 +75,7 @@ _graph.set_entry_point("intake")
 _graph.add_conditional_edges(
     "intake",
     route_after_intake,
-    {"review": "fetch_diff", "repo_match": "search_repos", "unclear": END},
+    {"review": "fetch_diff", "repo_match": "clarify_repo_match", "unclear": END},
 )
 
 # --- review branch ---
@@ -106,6 +110,11 @@ _graph.add_edge("merge_pr", END)
 _graph.add_edge("discard", END)
 
 # --- repo_match branch ---
+_graph.add_conditional_edges(
+    "clarify_repo_match",
+    route_after_clarify,
+    {"ask_again": "clarify_repo_match", "search": "search_repos"},
+)
 _graph.add_conditional_edges(
     "search_repos",
     route_after_search,

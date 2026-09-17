@@ -29,6 +29,7 @@ def health() -> dict:
 
 class StartRequest(BaseModel):
     message: str
+    language: Literal["ru", "en"] = "en"
 
 
 class ResumeRequest(BaseModel):
@@ -57,7 +58,9 @@ def _to_response(thread_id: str, result: dict) -> AgentResponse:
 async def start_agent(request: StartRequest) -> AgentResponse:
     thread_id = str(uuid.uuid4())
     config = {"configurable": {"thread_id": thread_id}}
-    result = await review_app.ainvoke({"user_request": request.message}, config=config)
+    result = await review_app.ainvoke(
+        {"user_request": request.message, "language": request.language}, config=config
+    )
     return _to_response(thread_id, result)
 
 
