@@ -377,11 +377,27 @@ def route_after_human_confirm(state: AgentState) -> str:
 
 
 async def post_comment(state: AgentState) -> dict:
+    lang = state.get("language")
+    owner, repo, pr_number = state["owner"], state["repo"], state["pr_number"]
+
     result = await call_tool(
-        "post_pr_comment",
-        {"owner": state["owner"], "repo": state["repo"], "pr_number": state["pr_number"], "body": state["summary"]},
+        "create_pr_review",
+        {"owner": owner, "repo": repo, "pr_number": pr_number, "body": state["summary"], "event": "APPROVE"},
     )
-    suffix = t(state.get("language"), "posted_suffix", url=result.get("html_url"))
+    if result.get("posted"):
+        suffix = t(lang, "posted_suffix", url=result.get("html_url"))
+        return {"posted": True, "summary": state["summary"] + suffix}
+
+    # GitHub hard-blocks a formal review on your own PR (measured live: 422 "Can not
+    # approve your own pull request" — the bot token and PR author are commonly the same
+    # account for this project's own test repos). Fall back to a plain comment, with an
+    # explicit verdict prefix since there's no native "Approved" badge to rely on here.
+    notice = t(lang, "self_approval_notice")
+    comment_result = await call_tool(
+        "post_pr_comment",
+        {"owner": owner, "repo": repo, "pr_number": pr_number, "body": notice + state["summary"]},
+    )
+    suffix = t(lang, "posted_as_comment_suffix", url=comment_result.get("html_url"))
     return {"posted": True, "summary": state["summary"] + suffix}
 
 

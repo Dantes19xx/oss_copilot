@@ -62,8 +62,9 @@ cd frontend && cp .env.local.example .env.local && npm install && npm run dev
 
 - `get_pr_diff(owner, repo, pr_number)` — diff и метаданные pull request'а
 - `get_pr_files(owner, repo, pr_number, limit)` — patch по каждому файлу PR (для поочерёдного ревью)
-- `post_pr_comment(owner, repo, pr_number, body)` — **write**-инструмент, публикует комментарий; граф вызывает его только после подтверждения человеком
-- `merge_pull_request(owner, repo, pr_number)` — **write**-инструмент, мержит PR; граф вызывает его только после подтверждения человеком (`merge`), и только вслед за публикацией комментария. Если GitHub отказывает в мерже (конфликты, обязательные ревью/чеки не пройдены) — это не ошибка, а обычный результат: `merged: false` с объяснением от GitHub, комментарий при этом уже опубликован
+- `post_pr_comment(owner, repo, pr_number, body)` — **write**-инструмент, публикует обычный комментарий; используется напрямую (`approve`/`merge` больше его не вызывают первым — см. `create_pr_review` ниже) и как fallback, когда формальный review невозможен
+- `create_pr_review(owner, repo, pr_number, body, event)` — **write**-инструмент, публикует настоящий GitHub-ревью (`event: APPROVE`/`REQUEST_CHANGES`) — реальный статус ревьюера в PR, а не просто комментарий. GitHub жёстко запрещает одобрять собственный PR (422 "Can not approve your own pull request", подтверждено вживую) — в этом случае граф автоматически падает на `post_pr_comment` с явным текстом-вердиктом в начале ("✅ Approved via OSS Copilot"), так что даже без формального статуса на GitHub видно, что PR одобрен
+- `merge_pull_request(owner, repo, pr_number)` — **write**-инструмент, мержит PR; граф вызывает его только после подтверждения человеком (`merge`), и только вслед за ревью/комментарием выше. Если GitHub отказывает в мерже (конфликты, обязательные ревью/чеки не пройдены) — это не ошибка, а обычный результат: `merged: false` с объяснением от GitHub, ревью/комментарий при этом уже опубликован
 - `search_github_repos(query, limit)` — поиск репозиториев-кандидатов для контрибьютинга
 - `get_repo_health(owner, repo)` — сигналы дружелюбности к новым контрибьюторам (CONTRIBUTING.md, good-first-issues, активность)
 - `get_good_first_issues(owner, repo, limit)` — список открытых good-first-issue

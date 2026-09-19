@@ -121,6 +121,30 @@ class GitHubClient:
         )
         return response.json()
 
+    async def create_pr_review(self, owner: str, repo: str, pr_number: int, body: str, event: str) -> dict:
+        """Submit a formal GitHub Pull Request Review (a real Approved/Changes-requested
+        status attached to the PR, not a plain comment). GitHub hard-blocks approving or
+        requesting changes on your own PR — 422 "Can not approve your own pull request"
+        — which is an expected, common outcome (verified live against this project's own
+        test repo, where the bot token and the PR author are the same account), not a
+        bug, so it's reported back as data (blocked_reason), not raised. Any other
+        failure still raises normally. Uses a raw POST (not the shared _post() helper,
+        which always raises on 4xx) so the self-approval case can be inspected first."""
+        async with httpx.AsyncClient(base_url=GITHUB_API_URL, headers=self._headers, timeout=20) as client:
+            response = await client.post(
+                f"/repos/{owner}/{repo}/pulls/{pr_number}/reviews",
+                json={"body": body, "event": event},
+            )
+        if response.status_code == 422 and "own pull request" in response.text.lower():
+            return {"posted": False, "blocked_reason": "self_approval"}
+        if response.status_code >= 400:
+            raise GitHubError(
+                f"GitHub API /repos/{owner}/{repo}/pulls/{pr_number}/reviews failed: "
+                f"{response.status_code} {response.text[:300]}"
+            )
+        data = response.json()
+        return {"posted": True, "id": data.get("id"), "html_url": data.get("html_url")}
+
     async def merge_pull_request(
         self, owner: str, repo: str, pr_number: int, merge_method: str = "merge"
     ) -> dict:

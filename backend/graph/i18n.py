@@ -24,10 +24,10 @@ _STRINGS: dict[str, dict[Language, str]] = {
         "для подбора репозитория.",
     },
     "confirm_instructions": {
-        "en": "Reply 'approve' to post this as a PR comment on GitHub, 'merge' to post it and "
-        "then merge the PR, or 'reject' to discard it.",
-        "ru": "Ответьте 'approve', чтобы опубликовать это как комментарий к PR на GitHub, "
-        "'merge' — чтобы опубликовать и затем смержить PR, или 'reject', чтобы отклонить.",
+        "en": "Reply 'approve' to approve this PR on GitHub, 'merge' to approve it and then "
+        "merge it, or 'reject' to discard it.",
+        "ru": "Ответьте 'approve', чтобы одобрить этот PR на GitHub, 'merge' — чтобы одобрить "
+        "и затем смержить, или 'reject', чтобы отклонить.",
     },
     "confirm_unrecognized": {
         "en": "Unrecognized reply '{decision}'. Reply 'approve', 'merge', or 'reject'.",
@@ -41,7 +41,19 @@ _STRINGS: dict[str, dict[Language, str]] = {
         "{warnings}. Внимательно прочитайте черновик перед подтверждением — модели было "
         "явно указано относиться к этому как к непроверенному контенту, а не как к командам.",
     },
-    "posted_suffix": {"en": "\n\n(Posted: {url})", "ru": "\n\n(Опубликовано: {url})"},
+    "posted_suffix": {"en": "\n\n(Approved on GitHub: {url})", "ru": "\n\n(Одобрено на GitHub: {url})"},
+    "self_approval_notice": {
+        "en": "✅ **Approved via OSS Copilot** (posted as a comment — GitHub doesn't allow a "
+        "formal review status on your own pull request)\n\n",
+        "ru": "✅ **Одобрено через OSS Copilot** (опубликовано как комментарий — GitHub не "
+        "позволяет формальный статус ревью на собственном PR)\n\n",
+    },
+    "posted_as_comment_suffix": {
+        "en": "\n\n(Approved — posted as a comment, not a formal GitHub review status, since "
+        "this is your own PR: {url})",
+        "ru": "\n\n(Одобрено — опубликовано как комментарий, а не формальный статус ревью, "
+        "так как это ваш собственный PR: {url})",
+    },
     "merged_suffix": {"en": "\n\n(Merged: {sha})", "ru": "\n\n(Смержено: {sha})"},
     "not_merged_suffix": {
         "en": "\n\n(Not merged: {message})",

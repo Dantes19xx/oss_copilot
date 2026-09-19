@@ -5,6 +5,8 @@ Exposes GitHub tools used by the LangGraph agent:
 - get_pr_files: fetch a pull request's per-file patches (for a file-by-file review loop)
 - post_pr_comment: post a review comment to a pull request (write — only call after
   human confirmation; the graph gates this behind a human-in-the-loop step)
+- create_pr_review: submit a formal Approve/Request-changes GitHub review (write — same
+  human-in-the-loop gate; falls back to post_pr_comment when GitHub blocks self-approval)
 - merge_pull_request: merge a pull request (write — only call after human confirmation;
   the graph gates this behind the same human-in-the-loop step)
 - search_github_repos: find candidate repositories to contribute to
@@ -66,6 +68,17 @@ async def post_pr_comment(owner: str, repo: str, pr_number: int, body: str) -> d
     client = GitHubClient()
     comment = await client.create_issue_comment(owner, repo, pr_number, body)
     return {"id": comment.get("id"), "html_url": comment.get("html_url")}
+
+
+@mcp.tool()
+async def create_pr_review(owner: str, repo: str, pr_number: int, body: str, event: str) -> dict:
+    """Submit a formal GitHub PR review (event: 'APPROVE' or 'REQUEST_CHANGES') — a real
+    reviewer status on the PR, not a plain comment. WRITE action — call only after human
+    approval. Returns posted=False with blocked_reason='self_approval' (not an error) if
+    GitHub blocks approving/requesting-changes on your own PR — the caller should fall
+    back to post_pr_comment in that case."""
+    client = GitHubClient()
+    return await client.create_pr_review(owner, repo, pr_number, body, event)
 
 
 @mcp.tool()

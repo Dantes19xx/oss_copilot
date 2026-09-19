@@ -28,7 +28,7 @@ flowchart TB
     end
 
     subgraph MCP["Own MCP server (backend/mcp_server/)"]
-        Tools["get_pr_diff, get_pr_files, post_pr_comment,<br/>merge_pull_request, search_github_repos,<br/>get_repo_health, get_good_first_issues"]
+        Tools["get_pr_diff, get_pr_files, post_pr_comment,<br/>create_pr_review, merge_pull_request,<br/>search_github_repos, get_repo_health,<br/>get_good_first_issues"]
     end
 
     GitHub[["GitHub API"]]
@@ -102,12 +102,17 @@ Walking a single "review this PR" request through the whole stack:
 11. **Backend resumes the SAME graph run** via `Command(resume=answer)` against the
     same `thread_id` — LangGraph's checkpointer (`InMemorySaver`) picks up exactly where
     `human_confirm` left off. `route_after_human_confirm` sends "approve" and "merge"
-    both to `post_comment` (the MCP `post_pr_comment` tool — always the first write to
-    GitHub, so there's a review trail even when merging) and "reject" to `discard`.
-    `route_after_post_comment` then sends "merge" on to `merge_pr` (the MCP
-    `merge_pull_request` tool). GitHub declining to merge — conflicts, unmet required
-    reviews/checks — comes back as data (`merged: false` + message), not an exception:
-    the comment was already posted, so that's a partial success to report, not a crash.
+    both to `post_comment` and "reject" to `discard`. `post_comment` calls the MCP
+    `create_pr_review` tool (`event: APPROVE`) — a real GitHub review status on the PR,
+    not a plain comment — so there's a review trail even when merging. GitHub hard-blocks
+    approving your own PR (422 "Can not approve your own pull request", verified live);
+    `post_comment` catches exactly that case and falls back to the plain `post_pr_comment`
+    tool with an explicit "✅ Approved via OSS Copilot" prefix, since there's no native
+    approval badge to rely on there. `route_after_post_comment` then sends "merge" on to
+    `merge_pr` (the MCP `merge_pull_request` tool). GitHub declining to merge — conflicts,
+    unmet required reviews/checks — comes back as data (`merged: false` + message), not an
+    exception: the review/comment was already posted, so that's a partial success to
+    report, not a crash.
 12. **Final result flows back** through backend → frontend → the user sees the posted
     comment link, the merge outcome, or the discard note.
 
