@@ -111,3 +111,52 @@ export const ONBOARDING: Record<Lang, OnboardingContent> = {
     closeLabel: "Понятно",
   },
 };
+
+type ModeCard = { title: string; body: string; accent: "review" | "repo" };
+type Step = { title: string; body: string };
+type LandingContent = { modesLabel: string; modes: ModeCard[]; stepsLabel: string; steps: Step[] };
+
+export const LANDING: Record<Lang, LandingContent> = {
+  en: {
+    modesLabel: "Two things it does",
+    modes: [
+      {
+        title: "PR Review",
+        body: "Paste a link. Get a file-by-file review — bugs, security issues, missing tests, breaking changes — before anything is posted.",
+        accent: "review",
+      },
+      {
+        title: "Repo Match",
+        body: "Describe your skills. Get repos ranked by real contributor-friendliness, not stars, plus open good-first-issues.",
+        accent: "repo",
+      },
+    ],
+    stepsLabel: "How it works",
+    steps: [
+      { title: "Describe what you need", body: "One free-text field — the agent classifies it automatically." },
+      { title: "Review the draft", body: "See the comments or candidates before anything happens." },
+      { title: "Confirm", body: "Approve, merge, reject, or pick a number — nothing goes out without you." },
+    ],
+  },
+  ru: {
+    modesLabel: "Что он умеет",
+    modes: [
+      {
+        title: "Ревью PR",
+        body: "Вставьте ссылку. Получите ревью по файлам — баги, security, отсутствующие тесты, breaking changes — прежде чем что-либо опубликуется.",
+        accent: "review",
+      },
+      {
+        title: "Подбор репозитория",
+        body: "Опишите свои навыки. Получите репозитории, ранжированные по реальной дружелюбности к новичкам, а не по звёздам, плюс открытые good-first-issues.",
+        accent: "repo",
+      },
+    ],
+    stepsLabel: "Как это работает",
+    steps: [
+      { title: "Опишите, что нужно", body: "Одно текстовое поле — агент сам классифицирует запрос." },
+      { title: "Проверьте черновик", body: "Увидите комментарии или кандидатов до того, как что-либо произойдёт." },
+      { title: "Подтвердите", body: "Approve, merge, reject или номер — ничего не уйдёт без вас." },
+    ],
+  },
+};

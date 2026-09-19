@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
-import { detectDefaultLang, Lang, ONBOARDING, UI } from "./i18n";
+import { detectDefaultLang, Lang, LANDING, ONBOARDING, UI } from "./i18n";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 const LANG_STORAGE_KEY = "oss-copilot-lang";
@@ -118,6 +118,7 @@ export default function Home() {
   }, []);
 
   const ui = UI[lang];
+  const landing = LANDING[lang];
 
   function chooseLang(next: Lang) {
     setLang(next);
@@ -262,6 +263,31 @@ export default function Home() {
                 </button>
               </div>
             </form>
+
+            <div className="landing-section">
+              <p className="section-label">{landing.modesLabel}</p>
+              <div className="mode-cards">
+                {landing.modes.map((mode) => (
+                  <div className="mode-card" data-accent={mode.accent} key={mode.title}>
+                    <h3>{mode.title}</h3>
+                    <p>{mode.body}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="landing-section">
+              <p className="section-label">{landing.stepsLabel}</p>
+              <div className="steps">
+                {landing.steps.map((step, i) => (
+                  <div className="step" key={step.title}>
+                    <span className="step-index">{i + 1}</span>
+                    <h3>{step.title}</h3>
+                    <p>{step.body}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
           </section>
         )}
 

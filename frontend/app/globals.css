@@ -573,6 +573,97 @@ input[type="text"]:focus {
   margin: 0;
 }
 
+/* ---------- landing: mode cards + steps ---------- */
+
+.landing-section {
+  margin-top: 3rem;
+}
+
+.section-label {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  margin: 0 0 1rem;
+}
+
+.mode-cards {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+.mode-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-top: 3px solid var(--accent);
+  border-radius: 12px;
+  padding: 1.2rem 1.3rem;
+}
+
+.mode-card[data-accent="repo"] {
+  border-top-color: var(--repo);
+}
+
+.mode-card h3 {
+  font-family: var(--font-display);
+  font-size: 1rem;
+  margin: 0 0 0.5rem;
+}
+
+.mode-card p {
+  color: var(--ink-2);
+  font-size: 0.87rem;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.steps {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1.5rem;
+}
+
+.step {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.step-index {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  color: var(--ink-2);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.step h3 {
+  font-size: 0.9rem;
+  margin: 0;
+}
+
+.step p {
+  color: var(--ink-3);
+  font-size: 0.83rem;
+  line-height: 1.5;
+  margin: 0;
+}
+
+@media (max-width: 640px) {
+  .mode-cards,
+  .steps {
+    grid-template-columns: 1fr;
+  }
+}
+
 @media (max-width: 480px) {
   .page { padding: 1.5rem 1rem 3rem; }
   .intro h1 { font-size: 1.5rem; }
