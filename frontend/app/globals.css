@@ -788,6 +788,80 @@ input[type="file"]::file-selector-button:hover {
   color: var(--accent-ink);
 }
 
+/* ---------- request history ---------- */
+
+.history-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+}
+
+.history-header .section-label {
+  margin-bottom: 0;
+}
+
+.history-clear {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--ink-3);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-color: transparent;
+  transition: color 0.15s ease, text-decoration-color 0.15s ease;
+}
+
+.history-clear:hover {
+  color: var(--ink);
+  text-decoration-color: currentColor;
+}
+
+.history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.history-item {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  width: 100%;
+  text-align: left;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 0.75rem 1rem;
+  color: var(--ink-2);
+  font-size: 0.87rem;
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+
+.history-item:hover {
+  border-color: var(--accent);
+  color: var(--ink);
+}
+
+.history-item-message {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.history-item-time {
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--ink-3);
+}
+
 @media (max-width: 640px) {
   .mode-cards,
   .steps {

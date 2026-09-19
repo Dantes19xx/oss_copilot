@@ -14,7 +14,7 @@ from backend.graph.i18n import LANGUAGE_NAME, t
 from backend.graph.mcp_client import call_tool
 from backend.graph.schemas import FileReviewOutput
 from backend.graph.state import AgentState
-from backend.graph.vision import analyze_image, extract_image_urls
+from backend.graph.vision import VISION_PROMPT, analyze_image, extract_image_urls
 from backend.rag.retrieve import retrieve_context
 
 STYLE_CONTEXT_QUERY = "contribution guidelines, coding conventions, and code style requirements"
@@ -73,9 +73,23 @@ def route_after_fetch_diff(state: AgentState) -> str:
     return "vision" if state.get("image_urls") else "context"
 
 
+_vision_cache = FileCache("vision_analyze_image")
+_vision_prompt_version = hashlib.sha256(VISION_PROMPT.encode()).hexdigest()[:12]
+# Same exact-match pattern as _review_cache below — a URL is the whole input (the image
+# itself lives at that URL, not passed inline), so caching on it is safe in a way a
+# semantic cache wouldn't need to be: this isn't approximating similarity, it's the
+# same request. Included in every review of a PR whose description still has the same
+# screenshot, which is the common case (a PR gets reviewed more than once as it's
+# updated, and the screenshot in the description usually doesn't change every time).
+
+
 async def analyze_screenshots(state: AgentState) -> dict:
     urls = state["image_urls"]
-    descriptions = await asyncio.gather(*(analyze_image(url) for url in urls))
+
+    async def _cached_analyze(url: str) -> str:
+        return await _vision_cache.get_or_compute((_vision_prompt_version, url), lambda: analyze_image(url))
+
+    descriptions = await asyncio.gather(*(_cached_analyze(url) for url in urls))
     return {"image_analysis": [f"{url}: {desc}" for url, desc in zip(urls, descriptions)]}
 
 

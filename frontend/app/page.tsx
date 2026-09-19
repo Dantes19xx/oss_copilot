@@ -8,6 +8,8 @@ const EVALS_URL = "https://github.com/Dantes19xx/oss_copilot/blob/main/EVALS.md"
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 const LANG_STORAGE_KEY = "oss-copilot-lang";
+const HISTORY_STORAGE_KEY = "oss-copilot-history";
+const MAX_HISTORY_ENTRIES = 20;
 
 type InterruptPayload = {
   type?: string;
@@ -26,6 +28,37 @@ type AgentResponse = {
   payload?: InterruptPayload | null;
   summary?: string | null;
 };
+
+type HistoryEntry = {
+  id: string;
+  message: string;
+  summary: string;
+  language: Lang;
+  timestamp: number;
+};
+
+function loadHistory(): HistoryEntry[] {
+  try {
+    const raw = window.localStorage.getItem(HISTORY_STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveHistory(entries: HistoryEntry[]) {
+  try {
+    window.localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(entries));
+  } catch {
+    // best-effort persistence only — private mode, storage full, etc.
+  }
+}
+
+function truncate(text: string, max: number): string {
+  const trimmed = text.trim();
+  return trimmed.length > max ? `${trimmed.slice(0, max - 1)}…` : trimmed;
+}
 
 function candidateNumbers(text?: string): number[] {
   if (!text) return [];
@@ -238,6 +271,8 @@ export default function Home() {
   const [response, setResponse] = useState<AgentResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [history, setHistory] = useState<HistoryEntry[]>([]);
+  const [viewingHistory, setViewingHistory] = useState<HistoryEntry | null>(null);
 
   useEffect(() => {
     let stored: string | null = null;
@@ -247,7 +282,29 @@ export default function Home() {
       // localStorage unavailable (private mode, etc.) — fall back to detection below
     }
     setLang(stored === "ru" || stored === "en" ? stored : detectDefaultLang());
+    setHistory(loadHistory());
   }, []);
+
+  function recordHistory(requestMessage: string, resp: AgentResponse) {
+    if (resp.status !== "done") return;
+    const entry: HistoryEntry = {
+      id: resp.thread_id,
+      message: requestMessage,
+      summary: resp.summary ?? "",
+      language: lang,
+      timestamp: Date.now(),
+    };
+    setHistory((prev) => {
+      const next = [entry, ...prev.filter((h) => h.id !== entry.id)].slice(0, MAX_HISTORY_ENTRIES);
+      saveHistory(next);
+      return next;
+    });
+  }
+
+  function clearHistory() {
+    setHistory([]);
+    saveHistory([]);
+  }
 
   const ui = UI[lang];
   const landing = LANDING[lang];
@@ -281,7 +338,9 @@ export default function Home() {
     setLoading(true);
     setError(null);
     try {
-      setResponse(await post("/api/agent/start", { message, language: lang }));
+      const result = await post("/api/agent/start", { message, language: lang });
+      setResponse(result);
+      recordHistory(message, result);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -294,7 +353,9 @@ export default function Home() {
     setLoading(true);
     setError(null);
     try {
-      setResponse(await post("/api/agent/resume", { thread_id: response.thread_id, answer: value }));
+      const result = await post("/api/agent/resume", { thread_id: response.thread_id, answer: value });
+      setResponse(result);
+      recordHistory(message, result);
       setAnswer("");
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -364,7 +425,7 @@ export default function Home() {
       {showStyleGuide && <StyleGuideModal lang={lang} onClose={() => setShowStyleGuide(false)} />}
 
       <main>
-        {!response && (
+        {!response && !viewingHistory && (
           <section className="intro">
             <h1>{ui.headline}</h1>
             <p className="subtitle">{ui.subtitle}</p>
@@ -447,6 +508,49 @@ export default function Home() {
                 ))}
               </div>
             </div>
+
+            {history.length > 0 && (
+              <div className="landing-section">
+                <div className="history-header">
+                  <p className="section-label">{ui.historyLabel}</p>
+                  <button type="button" className="history-clear" onClick={clearHistory}>
+                    {ui.historyClear}
+                  </button>
+                </div>
+                <div className="history-list">
+                  {history.map((entry) => (
+                    <button
+                      type="button"
+                      className="history-item"
+                      key={entry.id}
+                      onClick={() => setViewingHistory(entry)}
+                    >
+                      <span className="history-item-message">{truncate(entry.message, 70)}</span>
+                      <span className="history-item-time">
+                        {new Date(entry.timestamp).toLocaleString(entry.language === "ru" ? "ru-RU" : "en-US", {
+                          dateStyle: "medium",
+                          timeStyle: "short",
+                        })}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </section>
+        )}
+
+        {!response && viewingHistory && (
+          <section className="card result-card">
+            <span className="card-kicker">
+              <span className="card-kicker-dot" />
+              {ui.historyLabel}
+            </span>
+            <p className="meta">{viewingHistory.message}</p>
+            <pre className="draft">{viewingHistory.summary}</pre>
+            <button type="button" className="btn btn-ghost" onClick={() => setViewingHistory(null)}>
+              {ui.historyBack}
+            </button>
           </section>
         )}
 

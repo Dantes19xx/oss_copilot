@@ -25,6 +25,9 @@ export const UI = {
     kickerResult: "Result",
     kickerWorking: "Thinking",
     helpLabel: "How it works",
+    historyLabel: "Recent requests",
+    historyClear: "Clear",
+    historyBack: "Back",
   },
   ru: {
     headline: "Проверим PR или найдём репозиторий для контрибьюта.",
@@ -50,6 +53,9 @@ export const UI = {
     kickerResult: "Результат",
     kickerWorking: "Думаю",
     helpLabel: "Как это работает",
+    historyLabel: "Последние запросы",
+    historyClear: "Очистить",
+    historyBack: "Назад",
   },
 } as const satisfies Record<Lang, Record<string, string>>;
 
