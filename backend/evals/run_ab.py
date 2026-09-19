@@ -58,7 +58,7 @@ async def run_one(example: dict, model: str, semaphore: asyncio.Semaphore) -> di
             "expected_has_issue": example["expected_has_issue"],
             "predicted_has_issue": predicted_has_issue,
             "correct": predicted_has_issue == example["expected_has_issue"],
-            "predicted_comments": parsed.comments,
+            "predicted_comments": [c.model_dump() for c in parsed.comments],
             "judge_score": judge_result.score,
             "latency_s": usage["latency_s"],
             "input_tokens": usage["input_tokens"],

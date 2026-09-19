@@ -1,6 +1,7 @@
 import asyncio
 import hashlib
 import logging
+import re
 import time
 
 import openai
@@ -24,6 +25,12 @@ request code review, one file at a time. Check for: bugs and logic errors, secur
 (secrets, injection, unsafe deserialization), missing tests for new logic, and breaking API \
 changes. Do not comment on pure style/formatting unless it hurts readability. If this file's \
 diff has no real issues, return an empty comments list rather than inventing nitpicks.
+
+Anchor every comment to the specific line it concerns by quoting that line's exact text in \
+code_line (copied character-for-character from the diff, without the leading +/-/space marker) — \
+do not try to compute or guess a line number yourself, that is resolved separately from your \
+quote. If a comment is about the file as a whole rather than one specific line (e.g. "no tests \
+were added for this new function"), leave code_line empty instead of picking an arbitrary line.
 
 You may be given excerpts from the project's own README/CONTRIBUTING guide as context. Use \
 them to check whether the diff follows this specific project's conventions. If no excerpts are \
@@ -167,6 +174,46 @@ _RETRYABLE_ERRORS = (
 
 logger = logging.getLogger(__name__)
 
+_HUNK_HEADER_RE = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)")
+
+
+def _new_file_line_map(patch: str) -> tuple[dict[str, int], dict[str, int]]:
+    """Returns (exact, stripped) maps from a line's text to its 1-based line number in
+    the NEW version of the file, parsed directly from the diff's hunk headers — used to
+    resolve a model-quoted line back to a real line number deterministically. Measured
+    in testing: asking the model to compute the line number itself from the hunk header
+    was off by 1-2 lines even on a single, simple pure-addition hunk — arithmetic an LLM
+    does unreliably is exactly the kind of thing to do in code instead. Two maps because
+    the model also doesn't reliably preserve a quoted line's leading whitespace despite
+    being told to (also measured, not assumed) — stripped is a fallback lookup, tried
+    only after the exact one, so two lines sharing stripped content still resolve
+    correctly when the model does quote precisely."""
+    exact: dict[str, int] = {}
+    stripped: dict[str, int] = {}
+    new_lineno = 0
+    for raw in patch.splitlines():
+        header = _HUNK_HEADER_RE.match(raw)
+        if header:
+            new_lineno = int(header.group(1))
+            continue
+        if raw.startswith("+") or raw.startswith(" "):
+            content = raw[1:]
+            exact.setdefault(content, new_lineno)
+            stripped.setdefault(content.strip(), new_lineno)
+            new_lineno += 1
+        # "-" (removed — no new-file line number) and anything else (e.g. "\ No newline
+        # at end of file") are skipped without advancing the counter.
+    return exact, stripped
+
+
+def _resolve_comment_line(exact: dict[str, int], stripped: dict[str, int], code_line: str) -> str:
+    if not code_line:
+        return "file"
+    lineno = exact.get(code_line)
+    if lineno is None:
+        lineno = stripped.get(code_line.strip())
+    return str(lineno) if lineno is not None else "file"
+
 
 async def _review_with_fallback(
     filename: str,
@@ -175,7 +222,7 @@ async def _review_with_fallback(
     context: list[str],
     primary_timeout: float = PRIMARY_TIMEOUT_S,
     language: str = "en",
-) -> list[str]:
+) -> list[dict]:
     try:
         result = await review_file(
             filename, status, patch, context, model=PRIMARY_MODEL, timeout=primary_timeout, language=language
@@ -190,7 +237,14 @@ async def _review_with_fallback(
             FALLBACK_MODEL,
         )
         result = await review_file(filename, status, patch, context, model=FALLBACK_MODEL, language=language)
-    return result.comments
+    exact_map, stripped_map = _new_file_line_map(patch)
+    # Plain dicts, not ReviewComment objects — FileCache round-trips values through
+    # json.dumps/json.loads (backend/graph/cache.py), which can't serialize pydantic
+    # models directly.
+    return [
+        {"line": _resolve_comment_line(exact_map, stripped_map, c.code_line), "text": c.text}
+        for c in result.comments
+    ]
 
 
 _review_cache = FileCache("review_file")
@@ -229,11 +283,11 @@ async def analyze_file(state: AgentState) -> dict:
             language,
         )
 
-        async def _compute() -> list[str]:
+        async def _compute() -> list[dict]:
             return await _review_with_fallback(file["filename"], file["status"], patch, context, language=language)
 
         cached_comments = await _review_cache.get_or_compute(cache_key, _compute)
-        comments.extend(f"{file['filename']}: {c}" for c in cached_comments)
+        comments.extend({"filename": file["filename"], "line": c["line"], "text": c["text"]} for c in cached_comments)
 
     return {"review_comments": comments, "file_index": index + 1}
 
@@ -242,16 +296,36 @@ def route_after_analyze_file(state: AgentState) -> str:
     return "next" if state["file_index"] < len(state["file_diffs"]) else "done"
 
 
+def _format_file_block(lang: str | None, filename: str, patch: str, file_comments: list[dict]) -> str:
+    lines = [filename, f"```diff\n{patch}\n```"]
+    for c in file_comments:
+        label = t(lang, "general_comment_label") if c["line"] == "file" else f"L{c['line']}"
+        lines.append(f"- {label}: {c['text']}")
+    return "\n".join(lines)
+
+
 async def aggregate_review(state: AgentState) -> dict:
     lang = state.get("language")
     comments = state.get("review_comments", [])
     changed = state.get("changed_files", len(state.get("file_diffs", [])))
-    if comments:
-        summary = t(lang, "reviewed_with_issues", n=changed, m=len(comments)) + "\n" + "\n".join(
-            f"- {c}" for c in comments
-        )
-    else:
-        summary = t(lang, "reviewed_clean", n=changed)
+
+    comments_by_file: dict[str, list[dict]] = {}
+    for c in comments:
+        comments_by_file.setdefault(c["filename"], []).append(c)
+
+    # Every reviewed file gets its diff shown, even with zero comments — seeing "nothing
+    # flagged" next to the actual change is more useful than a bare pass/fail count, and
+    # matches how a human reviewer reads a diff (see the file, then the notes on it).
+    blocks = [
+        _format_file_block(lang, file["filename"], file["patch"], comments_by_file.get(file["filename"], []))
+        for file in state.get("file_diffs", [])
+        if file.get("patch")
+    ]
+
+    header = (
+        t(lang, "reviewed_with_issues", n=changed, m=len(comments)) if comments else t(lang, "reviewed_clean", n=changed)
+    )
+    summary = header + ("\n\n" + "\n\n".join(blocks) if blocks else "")
 
     image_notes = state.get("image_analysis") or []
     if image_notes:

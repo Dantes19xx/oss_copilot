@@ -20,8 +20,23 @@ class IntakeOutput(BaseModel):
     )
 
 
+class ReviewComment(BaseModel):
+    code_line: str = Field(
+        default="",
+        description="The exact text of ONE line from the diff that this comment concerns — "
+        "copied character-for-character from an added ('+') or unchanged (context) line in the "
+        "patch, WITHOUT the leading +/-/space marker. Leave empty if the comment is about the "
+        "file as a whole (e.g. missing tests) rather than one specific line. Do not guess a line "
+        "number yourself — the exact quote is resolved to a line number separately.",
+    )
+    text: str = Field(description="The actual review comment.")
+
+
 class FileReviewOutput(BaseModel):
-    comments: list[str] = Field(description="Specific, actionable comments about this file's diff. Empty if fine.")
+    comments: list[ReviewComment] = Field(
+        description="Specific, actionable comments about this file's diff, each anchored to the "
+        "line(s) it concerns. Empty if fine."
+    )
 
 
 class ClarifyOutput(BaseModel):

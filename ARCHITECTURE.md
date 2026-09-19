@@ -80,8 +80,16 @@ Walking a single "review this PR" request through the whole stack:
    real patch, it checks an on-disk cache first (`backend/graph/cache.py`, keyed on the
    file content + prompt version), and on a miss calls `_review_with_fallback`, which
    tries gpt-4o-mini with a 20s timeout and falls back to gpt-4o on a retryable failure.
-8. **`aggregate_review`** assembles the per-file comments into one draft, redacts
-   anything secret-shaped, and appends any screenshot analysis.
+   The model returns each comment as a quote of the exact diff line it concerns
+   (`code_line`) plus the comment text — `_review_with_fallback` resolves that quote to
+   a real line number itself, by parsing the diff's hunk headers
+   (`_new_file_line_map`/`_resolve_comment_line`), rather than trusting the model to
+   compute the line number (measured to be off by 1-2 lines even on a single simple
+   hunk — an LLM doing arithmetic it's bad at, done in code instead).
+8. **`aggregate_review`** groups comments by file, pairs each file's actual diff with
+   its line-anchored comments, redacts anything secret-shaped in the whole assembled
+   draft (diff included, not just the model's prose), and appends any screenshot
+   analysis.
 9. **`human_confirm`** calls `langgraph.types.interrupt()` — this is where node 2's
    `ainvoke()` actually returns, with `{status: "interrupt", payload: {...}}`, back
    through the backend to the frontend.

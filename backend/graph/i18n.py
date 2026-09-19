@@ -63,6 +63,7 @@ _STRINGS: dict[str, dict[Language, str]] = {
         "en": "\n\nScreenshot/attachment analysis:",
         "ru": "\n\nАнализ скриншотов/вложений:",
     },
+    "general_comment_label": {"en": "General", "ru": "Общее"},
     "no_repos_found": {
         "en": "No repositories found for query: {query}",
         "ru": "По запросу ничего не найдено: {query}",

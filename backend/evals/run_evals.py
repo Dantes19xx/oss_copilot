@@ -48,9 +48,9 @@ CONCURRENCY = 8
 RESULTS_PATH = Path(__file__).parent / "results.json"
 
 
-async def judge(example: dict, predicted_comments: list[str]) -> JudgeOutput:
+async def judge(example: dict, predicted_comments: list) -> JudgeOutput:
     llm = ChatOpenAI(model="gpt-4o-mini", temperature=0).with_structured_output(JudgeOutput)
-    predicted_block = "\n".join(f"- {c}" for c in predicted_comments) if predicted_comments else "(no comments)"
+    predicted_block = "\n".join(f"- {c.text}" for c in predicted_comments) if predicted_comments else "(no comments)"
     return await llm.ainvoke(
         [
             ("system", JUDGE_SYSTEM_PROMPT),
@@ -75,7 +75,7 @@ async def run_one(example: dict, semaphore: asyncio.Semaphore) -> dict:
             "expected_has_issue": example["expected_has_issue"],
             "predicted_has_issue": predicted_has_issue,
             "correct": predicted_has_issue == example["expected_has_issue"],
-            "predicted_comments": result.comments,
+            "predicted_comments": [c.model_dump() for c in result.comments],
             "judge_score": judge_result.score,
             "judge_reasoning": judge_result.reasoning,
         }

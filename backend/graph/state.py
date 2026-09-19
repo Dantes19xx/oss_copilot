@@ -25,7 +25,7 @@ class AgentState(TypedDict, total=False):
 
     file_diffs: list[dict]
     file_index: int
-    review_comments: list[str]
+    review_comments: list[dict]  # {"filename": str, "line": str, "text": str}
 
     summary: str
     human_decision: Literal["approve", "reject", "merge"]

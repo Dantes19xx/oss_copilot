@@ -16,6 +16,15 @@ worth remembering when comparing runs across §8's change (see §5).
 Evals call this exact function, not a reimplementation of the prompt, so results reflect
 what the agent actually ships.
 
+Since 2026-09-19, `review_file()`'s `comments` are structured (`ReviewComment`: `code_line`
++ `text`), not plain strings — the model quotes the diff line it's commenting on, and
+`backend/graph/nodes_review.py` resolves that quote to a real line number deterministically
+(parsing the diff itself, not trusting the model's own arithmetic — see PROGRESS.md for
+the measured accuracy problem that motivated this). Evals don't score line accuracy —
+the metrics below are about `text`, i.e. whether the *substance* of a comment is right —
+but `results.json`'s `predicted_comments` now carries `code_line` alongside `text` for
+each entry, not a bare string.
+
 ## 2. Golden dataset
 
 `backend/evals/golden_dataset.py` — 30 single-file diffs, each with a category and a
@@ -63,15 +72,20 @@ is what catches "right file, wrong/generic reason," which detection accuracy can
 model would be a natural next step, not done here. It's also only as good as its own
 prompt: see §5 for a real miscalibration this project hit and fixed.
 
-## 4. Results (n=30, run 2026-09-15 — latest; temperature 0.0, current default)
+## 4. Results (n=30, run 2026-09-19 — latest; temperature 0.0, current default)
+
+This run reflects a prompt change from the previous one (2026-09-15): `review_file()`
+now anchors each comment to a specific line, so it's a different `FILE_REVIEW_SYSTEM_PROMPT`
+(the prompt-version hash used for caching changed too), not the same prompt re-run — see
+§5 for what that does and doesn't explain about the numbers moving.
 
 | Metric | Value |
 |---|---|
-| Detection accuracy | **0.83** |
-| Precision | 0.81 |
+| Detection accuracy | 0.80 |
+| Precision | 0.79 |
 | Recall | **1.00** |
-| F1 | 0.90 |
-| Mean LLM-judge score | **4.13 / 5** |
+| F1 | 0.88 |
+| Mean LLM-judge score | 3.73 / 5 |
 
 By category:
 
@@ -79,14 +93,17 @@ By category:
 |---|---|---|---|
 | bug | 6 | 1.00 | 5.00 |
 | security | 6 | 1.00 | 4.33 |
-| breaking_change | 5 | 1.00 | 4.60 |
-| missing_tests | 5 | 1.00 | 3.00 |
-| clean | 8 | 0.38 | 3.75 |
+| breaking_change | 5 | 1.00 | 3.80 |
+| missing_tests | 5 | 1.00 | 2.60 |
+| clean | 8 | 0.25 | 3.00 |
 
-For comparison, the first documented run (n=30, 2026-09-08, temperature 0.2 — the
-default at the time): accuracy 0.87, precision 0.85, recall 1.00, F1 0.92, judge
-4.20/5; clean-category accuracy 0.50. Both runs are real, both are kept — see §5 for
-why the difference isn't simply read as "the newer number is more correct."
+For comparison, the immediately preceding run (n=30, 2026-09-15, same temperature 0.0,
+prior prompt version without line-anchoring): accuracy 0.83, precision 0.81, recall 1.00,
+F1 0.90, judge 4.13/5; clean-category accuracy 0.38. The first documented run (n=30,
+2026-09-08, temperature 0.2 — the default at the time): accuracy 0.87, precision 0.85,
+recall 1.00, F1 0.92, judge 4.20/5; clean-category accuracy 0.50. All three runs are
+real, all three are kept — see §5 for why the trend isn't simply read as "review quality
+is getting worse."
 
 Raw per-example results (including judge reasoning for every example) are written to
 `backend/evals/results.json` on every run — not committed as a static artifact, since a
@@ -94,20 +111,24 @@ rerun regenerates it and the repo should reflect the latest run, not a frozen sn
 
 ## 5. Findings
 
-- **Recall is perfect (1.00), precision is not (0.81 in the latest run).** The reviewer
-  never misses a real issue across bug/security/missing_tests/breaking_change (100%
-  accuracy in all four, in both documented runs), but flags 5 of 8 clean diffs in the
-  latest run (4 of 8 in the first) — clean-category accuracy is 0.38, down from 0.50.
-  It errs toward over-flagging rather than under-flagging, which is the safer failure
-  mode for a code-review tool, but it's a real, measured false-positive rate, not zero,
-  and it moved between runs rather than holding steady.
+- **Recall is perfect (1.00) across all three runs, precision is not (0.79 in the
+  latest).** The reviewer never misses a real issue across bug/security/missing_tests/
+  breaking_change (100% accuracy in all four, in every documented run), but flags 6 of 8
+  clean diffs in the latest run (5 of 8 on 2026-09-15, 4 of 8 on 2026-09-08) —
+  clean-category accuracy is 0.25, down from 0.38, down from 0.50. It errs toward
+  over-flagging rather than under-flagging, which is the safer failure mode for a
+  code-review tool, but it's a real, measured false-positive rate, not zero, and it has
+  moved in the same direction (worse) on every run so far rather than holding steady or
+  bouncing randomly — worth continuing to watch, not yet enough runs to call it a trend
+  versus noise (see the variance bullet below, which found no effect from an unrelated
+  prompt-length change on this exact category).
 - **Detection accuracy and judge score disagree, and that disagreement is the point.**
-  `missing_tests` has perfect detection accuracy (1.00) but the lowest judge score in
-  both runs (3.00 in the latest, 3.40 in the first) — the model correctly notices
-  *something's* off but its stated reasoning is often vague or points at the wrong
-  mechanism (e.g. flagged "type handling" instead of "no test covers this new branch").
-  A single metric would have hidden this, and it's the one finding that held up
-  identically across both runs.
+  `missing_tests` has perfect detection accuracy (1.00) in every run but the lowest judge
+  score of any category every time (2.60 latest, 3.00 on 2026-09-15, 3.40 on
+  2026-09-08) — the model correctly notices *something's* off but its stated reasoning is
+  often vague or points at the wrong mechanism (e.g. flagged "type handling" instead of
+  "no test covers this new branch"). A single metric would have hidden this, and it's the
+  one finding that has held up identically across all three runs.
 - **A judge-prompt bug inflated a false signal, caught by rerunning.** The first
   version of the judge prompt scored a *correct* empty `comments` list on a clean diff as
   1/5, because its rubric implicitly expected the model to say something (even "looks
@@ -125,22 +146,33 @@ rerun regenerates it and the repo should reflect the latest run, not a frozen sn
   file-by-file review (vs. reviewing the full PR at once) worth knowing about rather than
   papering over: `analyze_file` (backend/graph/nodes_review.py) has no cross-file
   context beyond the RAG-retrieved style guide.
-- **Run-to-run variance exists, and it's larger than it looks at first.** Three data
+- **Run-to-run variance exists, and it's larger than it looks at first.** Four data
   points now exist for this exact 30-example set: accuracy 0.87 (2026-09-08, temperature
   0.2, judge prompt bug already fixed by that point), 0.90 (§8's dedicated temperature
-  experiment, same day, both temperature 0.0 and 0.2 landed on 0.90), and 0.83
-  (2026-09-15, temperature 0.0 — today's production default). The 2026-09-15 run is
-  **confounded**: it differs from the first run in both *when* it ran and *what
-  temperature it used* (§8 changed the production default from 0.2 to 0.0 in between),
-  so the 0.87 → 0.83 drop cannot be cleanly attributed to the temperature change. What
-  the three numbers together do show cleanly: even the single controlled comparison in
+  experiment, same day, both temperature 0.0 and 0.2 landed on 0.90), 0.83 (2026-09-15,
+  temperature 0.0), and 0.80 (2026-09-19, temperature 0.0, line-anchoring prompt added —
+  see §4). Each later run is **confounded** against the earlier ones by more than just
+  chance: 2026-09-15 changed the temperature default from 0.2 to 0.0 relative to the
+  first run; 2026-09-19 changed the prompt again (line-anchoring) relative to
+  2026-09-15. Neither drop can be cleanly attributed to its respective change alone. What
+  the four numbers together do show cleanly: even the single controlled comparison in
   §8, which held everything but temperature fixed, produced 0.90 for *both* settings —
-  yet neither of the two standalone `run_evals.py` runs (0.87, 0.83) matched that 0.90 at
-  all. The spread across all three (0.83-0.90) is real sampling noise in the reviewer's
-  own output at n=30, not something to explain away by picking whichever run is most
-  recent or most favorable. A single run's numbers should always be read as an estimate
-  with real width, not an exact figure — this is the concrete evidence for that, not just
-  a caveat.
+  yet none of the three standalone `run_evals.py` runs (0.87, 0.83, 0.80) matched that
+  0.90 at all. The spread across all four (0.80-0.90) is real sampling noise in the
+  reviewer's own output at n=30, not something to explain away by picking whichever run
+  is most recent or most favorable.
+  Specifically for the 2026-09-19 drop: before accepting "line-anchoring made review
+  quality worse" at face value, a quick control was run — the same 8 clean-category
+  examples, once with the shipped anchoring instruction, once with a much shorter
+  rewording of the same instruction. Both flagged 6 of 8 (2/8 correct), just a
+  *different* 2 out of 8 landing correct between the two wordings — consistent with
+  ordinary per-example volatility in this already-volatile category, not a systematic
+  effect of the anchoring instruction's length or presence. That doesn't prove the
+  0.83 → 0.80 drop is pure noise (no controlled A/B was run holding the prompt version
+  literally fixed across two dates, the way §8 did for temperature), but it does rule out
+  the most obvious alternative explanation before letting the number stand. A single
+  run's numbers should always be read as an estimate with real width, not an exact
+  figure — this is the concrete evidence for that, not just a caveat.
 
 ## 6. Reproducing
 

@@ -63,6 +63,37 @@ please check https://github.com/owner/repo/pull/123, is it safe to merge?
 
 Обычно это занимает 10–30 секунд на PR из нескольких файлов.
 
+### Как выглядит черновик
+
+Под каждым файлом — сам diff (что удалено, что добавлено, обычные `+`/`-` строки) и
+список замечаний под ним, каждое со ссылкой на конкретную строку:
+
+````
+src/app.py
+```diff
+@@ -10,6 +10,8 @@
+     def __init__(self, items=None):
+         self.items = items if items is not None else []
+-    def add(self, item):
+-        self.items.append(item)
++    def add(self, item, qty=1):
++        for _ in range(qty):
++            self.items.append(item)
+```
+- L12: Новый параметр `qty` не проверяется — отрицательное значение приведёт к
+  некорректному поведению.
+````
+
+Номер строки — это **строка в новой версии файла**, ровно та, что видна в diff'е выше
+(не в исходном файле целиком). Если замечание касается файла в целом, а не конкретной
+строки (например, "не хватает тестов"), вместо номера строки будет **"General"**/
+**"Общее"**.
+
+Номер строки вычисляется не самой моделью, а отдельно — по её точной цитате нужной
+строки из diff'а, сверенной с самим diff'ом программно. Если модель процитировала
+что-то, чего в diff'е не нашлось, замечание помечается как общее ("General"), а не
+привязывается к случайной строке.
+
 ### Подтверждение
 
 Вы увидите черновик комментария и три кнопки: **Approve**, **Approve & merge**,
@@ -195,23 +226,36 @@ PYTHONPATH=. python -m backend.rag.document_ingest <owner> <repo> path/to/style-
 
 **Ревью, отклонённое пользователем:**
 
-```
+````
 > Review the pull request https://github.com/pallets/flask/pull/5918
 [агент работает...]
 
-Reviewed 5 file(s). Found 6 issue(s):
-- src/flask/app.py: The removal of the weak reference to avoid reference
-  cycles is a significant change. Consider adding tests...
+Reviewed 5 file(s). Found 13 issue(s):
+
+src/flask/app.py
+```diff
+@@ -5,7 +5,6 @@
+ import os
+ import sys
+-import weakref
+ ...
+```
+- L362: The addition of the `_options_view` function to `self.view_functions`
+  may introduce breaking changes if existing code relies on the previous
+  behavior of handling OPTIONS requests...
 - ...
 
-Reply 'approve' to post this as a PR comment on GitHub, or 'reject' to
-discard it.
+Reply 'approve' to post this as a PR comment on GitHub, 'merge' to post it
+and then merge the PR, or 'reject' to discard it.
 > reject
 
-Reviewed 5 file(s). Found 6 issue(s):
+Reviewed 5 file(s). Found 13 issue(s):
 ...
 (Discarded by reviewer — not posted to GitHub.)
-```
+````
+
+(Кнопки Approve / Approve & merge / Reject делают то же самое без набора текста —
+транскрипт здесь показывает текстовый путь для наглядности.)
 
 **Подбор репозитория с выбором:**
 
