@@ -24,6 +24,7 @@ export const UI = {
     kickerClarify: "Quick question",
     kickerResult: "Result",
     kickerWorking: "Thinking",
+    helpLabel: "How it works",
   },
   ru: {
     headline: "Проверим PR или найдём репозиторий для контрибьюта.",
@@ -48,6 +49,7 @@ export const UI = {
     kickerClarify: "Уточняющий вопрос",
     kickerResult: "Результат",
     kickerWorking: "Думаю",
+    helpLabel: "Как это работает",
   },
 } as const satisfies Record<Lang, Record<string, string>>;
 
@@ -55,3 +57,57 @@ export function detectDefaultLang(): Lang {
   if (typeof navigator === "undefined") return "en";
   return navigator.language.toLowerCase().startsWith("ru") ? "ru" : "en";
 }
+
+type OnboardingSection = { title: string; body: string };
+type OnboardingContent = { title: string; intro: string; sections: OnboardingSection[]; closeLabel: string };
+
+export const ONBOARDING: Record<Lang, OnboardingContent> = {
+  en: {
+    title: "How OSS Copilot works",
+    intro:
+      "One field, free text — the agent figures out what you want. Nothing is ever posted to GitHub or finalized without your explicit confirmation.",
+    sections: [
+      {
+        title: "Review a pull request",
+        body: "Paste a PR link (or describe it in words). The agent fetches the diff and checks each file for bugs, security issues, missing tests, and breaking changes, then shows you a draft. Approve posts it as a GitHub comment, Approve & merge also merges the PR, Reject discards it — nothing goes out until you decide.",
+      },
+      {
+        title: "Find a repo to contribute to",
+        body: "Describe your skills and interests. The agent may ask one or two quick follow-up questions to narrow things down, then ranks candidates by how contributor-friendly they actually are — not just star count. Pick a number to get real open good-first-issues, or Skip.",
+      },
+      {
+        title: "Multimodal by default",
+        body: "If a PR description includes a screenshot or GIF, it's automatically analyzed by a vision model and folded into the review — catching visual bugs a text-only diff can't.",
+      },
+      {
+        title: "Built-in safety",
+        body: "Secrets are redacted before anything is shown or posted. Suspicious instructions hidden in a diff are flagged, not obeyed. If the primary model is slow or unavailable, a stronger one is used automatically.",
+      },
+    ],
+    closeLabel: "Got it",
+  },
+  ru: {
+    title: "Как работает OSS Copilot",
+    intro:
+      "Одно поле, свободный текст — агент сам понимает, что нужно. Ничего не публикуется в GitHub и не финализируется без вашего явного подтверждения.",
+    sections: [
+      {
+        title: "Ревью pull request'а",
+        body: "Вставьте ссылку на PR (или опишите словами). Агент скачивает diff, проверяет каждый файл на баги, security-проблемы, отсутствующие тесты и breaking changes, показывает черновик. Approve публикует его как комментарий на GitHub, Approve & merge — ещё и мержит PR, Reject — отклоняет. Ничего не уходит, пока вы не решите.",
+      },
+      {
+        title: "Подбор репозитория для контрибьюта",
+        body: "Опишите свои навыки и интересы. Агент может задать 1-2 коротких уточняющих вопроса, затем ранжирует кандидатов по реальной дружелюбности к новичкам — не по числу звёзд. Выберите номер, чтобы получить настоящие открытые good-first-issues, или нажмите Skip.",
+      },
+      {
+        title: "Мультимодальность по умолчанию",
+        body: "Если в описании PR есть скриншот или gif, он автоматически анализируется vision-моделью и встраивается в ревью — это ловит визуальные баги, которые текстовый diff в принципе не видит.",
+      },
+      {
+        title: "Встроенная безопасность",
+        body: "Секреты вычищаются из текста до того, как что-либо показывается или публикуется. Подозрительные инструкции, спрятанные в diff'е, помечаются, а не выполняются. Если основная модель недоступна или медленная — агент автоматически переключается на более сильную.",
+      },
+    ],
+    closeLabel: "Понятно",
+  },
+};

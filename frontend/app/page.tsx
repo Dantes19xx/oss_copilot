@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
-import { detectDefaultLang, Lang, UI } from "./i18n";
+import { detectDefaultLang, Lang, ONBOARDING, UI } from "./i18n";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 const LANG_STORAGE_KEY = "oss-copilot-lang";
@@ -58,8 +58,49 @@ function WarningIcon() {
   );
 }
 
+function OnboardingModal({ lang, onClose }: { lang: Lang; onClose: () => void }) {
+  const content = ONBOARDING[lang];
+
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [onClose]);
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal" role="dialog" aria-modal="true" aria-label={content.title} onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2>{content.title}</h2>
+          <button type="button" className="icon-btn" onClick={onClose} aria-label="Close">
+            ×
+          </button>
+        </div>
+        <p className="modal-intro">{content.intro}</p>
+        <div className="onboarding-list">
+          {content.sections.map((section, i) => (
+            <div className="onboarding-item" key={section.title}>
+              <span className="onboarding-index">{i + 1}</span>
+              <div>
+                <h3>{section.title}</h3>
+                <p>{section.body}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+        <button type="button" className="btn btn-primary" onClick={onClose}>
+          {content.closeLabel}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function Home() {
   const [lang, setLang] = useState<Lang>("en");
+  const [showHelp, setShowHelp] = useState(false);
   const [message, setMessage] = useState("");
   const [answer, setAnswer] = useState("");
   const [response, setResponse] = useState<AgentResponse | null>(null);
@@ -159,19 +200,32 @@ export default function Home() {
         <div className="brand">
           <span className="brand-mark">$</span>OSS Copilot
         </div>
-        {!response ? (
-          <div className="lang-toggle" role="group" aria-label="Language">
-            <button type="button" data-active={lang === "ru"} onClick={() => chooseLang("ru")}>
-              RU
-            </button>
-            <button type="button" data-active={lang === "en"} onClick={() => chooseLang("en")}>
-              EN
-            </button>
-          </div>
-        ) : (
-          <span className="lang-pill">{lang.toUpperCase()}</span>
-        )}
+        <div className="topbar-right">
+          <button
+            type="button"
+            className="icon-btn"
+            onClick={() => setShowHelp(true)}
+            aria-label={ui.helpLabel}
+            title={ui.helpLabel}
+          >
+            ?
+          </button>
+          {!response ? (
+            <div className="lang-toggle" role="group" aria-label="Language">
+              <button type="button" data-active={lang === "ru"} onClick={() => chooseLang("ru")}>
+                RU
+              </button>
+              <button type="button" data-active={lang === "en"} onClick={() => chooseLang("en")}>
+                EN
+              </button>
+            </div>
+          ) : (
+            <span className="lang-pill">{lang.toUpperCase()}</span>
+          )}
+        </div>
       </header>
+
+      {showHelp && <OnboardingModal lang={lang} onClose={() => setShowHelp(false)} />}
 
       <main>
         {!response && (
