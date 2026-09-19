@@ -2,6 +2,7 @@ fastapi
 uvicorn[standard]
 python-dotenv
 pydantic
+python-multipart
 
 langgraph
 langchain-core

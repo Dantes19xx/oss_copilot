@@ -188,3 +188,51 @@ export const LANDING: Record<Lang, LandingContent> = {
     ],
   },
 };
+
+type StyleGuideContent = {
+  trigger: string;
+  title: string;
+  intro: string;
+  ownerLabel: string;
+  repoLabel: string;
+  fileLabel: string;
+  uploadButton: string;
+  uploading: string;
+  successPrefix: string;
+  successMiddle: string;
+  errorPrefix: string;
+  closeLabel: string;
+};
+
+export const STYLE_GUIDE: Record<Lang, StyleGuideContent> = {
+  en: {
+    trigger: "+ Upload a style guide",
+    title: "Upload a style guide",
+    intro:
+      "Index a PDF or DOCX of your team's coding standards for a repo — future reviews of that repo will use it as context, the same way it already uses that repo's own CONTRIBUTING.md.",
+    ownerLabel: "Repo owner",
+    repoLabel: "Repo name",
+    fileLabel: "PDF or DOCX file",
+    uploadButton: "Upload",
+    uploading: "Uploading",
+    successPrefix: "Indexed",
+    successMiddle: "chunk(s) from",
+    errorPrefix: "Upload failed: ",
+    closeLabel: "Close",
+  },
+  ru: {
+    trigger: "+ Загрузить style-guide",
+    title: "Загрузить style-guide",
+    intro:
+      "Проиндексируйте PDF или DOCX со стандартами вашей команды для репозитория — будущие ревью этого репозитория будут учитывать его как контекст, так же как уже учитывают собственный CONTRIBUTING.md репозитория.",
+    ownerLabel: "Владелец репозитория",
+    repoLabel: "Название репозитория",
+    fileLabel: "Файл PDF или DOCX",
+    uploadButton: "Загрузить",
+    uploading: "Загружаю",
+    successPrefix: "Проиндексировано",
+    successMiddle: "чанк(ов) из",
+    errorPrefix: "Ошибка загрузки: ",
+    closeLabel: "Закрыть",
+  },
+};

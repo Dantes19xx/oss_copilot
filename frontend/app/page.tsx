@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
-import { detectDefaultLang, EVAL_STATS, Lang, LANDING, ONBOARDING, UI } from "./i18n";
+import { detectDefaultLang, EVAL_STATS, Lang, LANDING, ONBOARDING, STYLE_GUIDE, UI } from "./i18n";
 
 const SHOW_EVAL_STATS = process.env.NEXT_PUBLIC_SHOW_EVAL_STATS === "true";
 const EVALS_URL = "https://github.com/Dantes19xx/oss_copilot/blob/main/EVALS.md";
@@ -101,9 +101,138 @@ function OnboardingModal({ lang, onClose }: { lang: Lang; onClose: () => void })
   );
 }
 
+type StyleGuideResult = { repo: string; source: string; chunks: number };
+
+function StyleGuideModal({ lang, onClose }: { lang: Lang; onClose: () => void }) {
+  const content = STYLE_GUIDE[lang];
+  const [owner, setOwner] = useState("");
+  const [repo, setRepo] = useState("");
+  const [file, setFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [result, setResult] = useState<StyleGuideResult | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [onClose]);
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault();
+    if (!file || !owner.trim() || !repo.trim() || uploading) return;
+    setUploading(true);
+    setError(null);
+    setResult(null);
+    try {
+      const formData = new FormData();
+      formData.append("owner", owner.trim());
+      formData.append("repo", repo.trim());
+      formData.append("file", file);
+      const res = await fetch(`${API_URL}/api/style-guide/upload`, { method: "POST", body: formData });
+      const body = await res.json().catch(() => null);
+      if (!res.ok) {
+        throw new Error((body && body.detail) || `Request failed (${res.status})`);
+      }
+      setResult(body as StyleGuideResult);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal" role="dialog" aria-modal="true" aria-label={content.title} onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2>{content.title}</h2>
+          <button type="button" className="icon-btn" onClick={onClose} aria-label="Close">
+            ×
+          </button>
+        </div>
+        <p className="modal-intro">{content.intro}</p>
+
+        <form className="upload-form" onSubmit={handleSubmit}>
+          <div className="upload-row">
+            <div className="field">
+              <label htmlFor="sg-owner">{content.ownerLabel}</label>
+              <input
+                id="sg-owner"
+                type="text"
+                value={owner}
+                onChange={(e) => setOwner(e.target.value)}
+                placeholder="owner"
+                required
+              />
+            </div>
+            <div className="field">
+              <label htmlFor="sg-repo">{content.repoLabel}</label>
+              <input
+                id="sg-repo"
+                type="text"
+                value={repo}
+                onChange={(e) => setRepo(e.target.value)}
+                placeholder="repo"
+                required
+              />
+            </div>
+          </div>
+          <div className="field">
+            <label htmlFor="sg-file">{content.fileLabel}</label>
+            <input
+              id="sg-file"
+              type="file"
+              accept=".pdf,.docx"
+              onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+              required
+            />
+          </div>
+
+          {result && (
+            <div className="banner banner-success">
+              <span>
+                {content.successPrefix} {result.chunks} {content.successMiddle} &quot;{result.source}&quot; →{" "}
+                {result.repo}.
+              </span>
+            </div>
+          )}
+          {error && (
+            <div className="banner banner-error">
+              <WarningIcon />
+              <span>
+                {content.errorPrefix}
+                {error}
+              </span>
+            </div>
+          )}
+
+          <button
+            type="submit"
+            className="btn btn-primary"
+            disabled={uploading || !file || !owner.trim() || !repo.trim()}
+          >
+            {uploading ? (
+              <>
+                {content.uploading}
+                <Dots />
+              </>
+            ) : (
+              content.uploadButton
+            )}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 export default function Home() {
   const [lang, setLang] = useState<Lang>("en");
   const [showHelp, setShowHelp] = useState(false);
+  const [showStyleGuide, setShowStyleGuide] = useState(false);
   const [message, setMessage] = useState("");
   const [answer, setAnswer] = useState("");
   const [response, setResponse] = useState<AgentResponse | null>(null);
@@ -123,6 +252,7 @@ export default function Home() {
   const ui = UI[lang];
   const landing = LANDING[lang];
   const evalStats = EVAL_STATS[lang];
+  const styleGuideCopy = STYLE_GUIDE[lang];
 
   function chooseLang(next: Lang) {
     setLang(next);
@@ -231,6 +361,7 @@ export default function Home() {
       </header>
 
       {showHelp && <OnboardingModal lang={lang} onClose={() => setShowHelp(false)} />}
+      {showStyleGuide && <StyleGuideModal lang={lang} onClose={() => setShowStyleGuide(false)} />}
 
       <main>
         {!response && (
@@ -267,6 +398,10 @@ export default function Home() {
                 </button>
               </div>
             </form>
+
+            <button type="button" className="upload-trigger" onClick={() => setShowStyleGuide(true)}>
+              {styleGuideCopy.trigger}
+            </button>
 
             {SHOW_EVAL_STATS && (
               <div className="landing-section stats-strip">

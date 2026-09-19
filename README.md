@@ -42,6 +42,7 @@ docker compose exec backend python -m backend.graph.run_agent "Review the pull r
 
 - `POST /api/agent/start {"message": str}` — стартует граф, возвращает `{status: "interrupt", thread_id, payload}` или `{status: "done", summary}`
 - `POST /api/agent/resume {"thread_id": str, "answer": str}` — резюмирует через `Command(resume=answer)`
+- `POST /api/style-guide/upload` (multipart: `owner`, `repo`, `file`) — веб-путь к тому же `document_ingest.ingest_document()`, что и CLI выше; отклоняет не-PDF/DOCX (400) и файлы больше 10 МБ (413)
 
 CORS настроен на `FRONTEND_ORIGIN` (по умолчанию `http://localhost:3000`). Локальный запуск без Docker:
 
@@ -92,11 +93,13 @@ PYTHONPATH=. python -m backend.rag.ingest <owner> <repo>
 
 После этого `backend/graph/graph.py` автоматически подтягивает релевантный контекст в узле `retrieve_style_context` перед ревью. Если документы для репозитория не проиндексированы, граф не падает — просто ревьюит без грaундинга.
 
-**Свой PDF/DOCX style-guide** (`backend/rag/document_ingest.py`) — команда часто держит внутренние стандарты кодирования отдельным документом (PDF/DOCX), а не в `CONTRIBUTING.md` целевого репозитория. Загружается в ту же коллекцию `repo_docs`, тем же `retrieve_style_context` — без единой правки в графе или ретривале:
+**Свой PDF/DOCX style-guide** (`backend/rag/document_ingest.py`) — команда часто держит внутренние стандарты кодирования отдельным документом (PDF/DOCX), а не в `CONTRIBUTING.md` целевого репозитория. Загружается в ту же коллекцию `repo_docs`, тем же `retrieve_style_context` — без единой правки в графе или ретривале. Два одинаковых по эффекту пути — оба вызывают одну и ту же `ingest_document()`, не дублируют парсинг:
 
 ```bash
 PYTHONPATH=. python -m backend.rag.document_ingest <owner> <repo> path/to/style-guide.pdf   # или .docx
 ```
+
+— либо из веб-интерфейса, кнопка "+ Upload a style guide" под формой запроса (`POST /api/style-guide/upload`, multipart, лимит 10 МБ).
 
 ### Граф (LangGraph): ветвления, циклы, human-in-the-loop
 

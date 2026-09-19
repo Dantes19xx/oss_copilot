@@ -704,6 +704,90 @@ input[type="text"]:focus {
   color: var(--accent-ink);
 }
 
+/* ---------- style-guide upload ---------- */
+
+.upload-trigger {
+  display: inline-block;
+  background: none;
+  border: none;
+  padding: 0;
+  margin-top: 1rem;
+  color: var(--ink-3);
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-color: transparent;
+  transition: color 0.15s ease, text-decoration-color 0.15s ease;
+}
+
+.upload-trigger:hover {
+  color: var(--ink);
+  text-decoration-color: currentColor;
+}
+
+.upload-form {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1rem;
+  margin-top: 1.2rem;
+}
+
+.upload-row,
+.upload-form .field,
+.upload-form .banner {
+  align-self: stretch;
+}
+
+.upload-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.85rem;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.field label {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--ink-3);
+}
+
+input[type="file"] {
+  font-family: var(--font-sans);
+  font-size: 0.85rem;
+  color: var(--ink-2);
+}
+
+input[type="file"]::file-selector-button {
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  color: var(--ink);
+  border-radius: 6px;
+  padding: 0.4rem 0.8rem;
+  font-family: var(--font-sans);
+  font-size: 0.82rem;
+  cursor: pointer;
+  margin-right: 0.7rem;
+  transition: border-color 0.15s ease;
+}
+
+input[type="file"]::file-selector-button:hover {
+  border-color: var(--accent);
+}
+
+.banner-success {
+  background: var(--accent-soft);
+  border-color: rgba(79, 191, 159, 0.35);
+  color: var(--accent-ink);
+}
+
 @media (max-width: 640px) {
   .mode-cards,
   .steps {
@@ -713,6 +797,10 @@ input[type="text"]:focus {
   .stats-grid {
     grid-template-columns: repeat(2, 1fr);
     row-gap: 1.1rem;
+  }
+
+  .upload-row {
+    grid-template-columns: 1fr;
   }
 }
 
