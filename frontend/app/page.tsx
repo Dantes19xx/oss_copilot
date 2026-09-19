@@ -1,7 +1,10 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
-import { detectDefaultLang, Lang, LANDING, ONBOARDING, UI } from "./i18n";
+import { detectDefaultLang, EVAL_STATS, Lang, LANDING, ONBOARDING, UI } from "./i18n";
+
+const SHOW_EVAL_STATS = process.env.NEXT_PUBLIC_SHOW_EVAL_STATS === "true";
+const EVALS_URL = "https://github.com/Dantes19xx/oss_copilot/blob/main/EVALS.md";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 const LANG_STORAGE_KEY = "oss-copilot-lang";
@@ -119,6 +122,7 @@ export default function Home() {
 
   const ui = UI[lang];
   const landing = LANDING[lang];
+  const evalStats = EVAL_STATS[lang];
 
   function chooseLang(next: Lang) {
     setLang(next);
@@ -263,6 +267,26 @@ export default function Home() {
                 </button>
               </div>
             </form>
+
+            {SHOW_EVAL_STATS && (
+              <div className="landing-section stats-strip">
+                <p className="section-label">{evalStats.eyebrow}</p>
+                <div className="stats-grid">
+                  {evalStats.stats.map((stat) => (
+                    <div key={stat.label}>
+                      <div className="stat-value">{stat.value}</div>
+                      <div className="stat-label">{stat.label}</div>
+                    </div>
+                  ))}
+                </div>
+                <p className="stats-caption">
+                  {evalStats.caption}{" "}
+                  <a href={EVALS_URL} target="_blank" rel="noopener noreferrer">
+                    {evalStats.captionLink}
+                  </a>
+                </p>
+              </div>
+            )}
 
             <div className="landing-section">
               <p className="section-label">{landing.modesLabel}</p>

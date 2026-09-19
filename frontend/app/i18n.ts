@@ -53,6 +53,34 @@ export const UI = {
   },
 } as const satisfies Record<Lang, Record<string, string>>;
 
+type Stat = { value: string; label: string };
+type EvalStatsContent = { eyebrow: string; stats: Stat[]; caption: string; captionLink: string };
+
+export const EVAL_STATS: Record<Lang, EvalStatsContent> = {
+  en: {
+    eyebrow: "Measured, not vibes",
+    stats: [
+      { value: "30", label: "golden examples" },
+      { value: "0.90", label: "F1 score" },
+      { value: "1.00", label: "recall" },
+      { value: "4.13/5", label: "LLM-judge score" },
+    ],
+    caption: "From an automated eval run on a 30-example golden dataset.",
+    captionLink: "Methodology & A/B experiment →",
+  },
+  ru: {
+    eyebrow: "Измерено, не на глаз",
+    stats: [
+      { value: "30", label: "golden-примеров" },
+      { value: "0.90", label: "F1-score" },
+      { value: "1.00", label: "recall" },
+      { value: "4.13/5", label: "оценка LLM-judge" },
+    ],
+    caption: "Автоматический прогон на golden dataset из 30 примеров.",
+    captionLink: "Методология и A/B-эксперимент →",
+  },
+};
+
 export function detectDefaultLang(): Lang {
   if (typeof navigator === "undefined") return "en";
   return navigator.language.toLowerCase().startsWith("ru") ? "ru" : "en";
