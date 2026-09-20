@@ -17,6 +17,19 @@ AI-агент для code review merge request'ов на GitHub и поиска 
 
 Один агент, один граф LangGraph — свободный текстовый запрос классифицируется в одну из двух веток.
 
+## Скриншоты
+
+Снято с боевого деплоя ([oss-copilot-dmitriy-solo.vercel.app](https://oss-copilot-dmitriy-solo.vercel.app)) на реальных запросах, русский интерфейс.
+
+| | |
+|---|---|
+| **Главная.** Один свободный текстовый запрос, плашка с реальными цифрами evals. | **Черновик ревью** реального PR (`pallets/flask#5918`): замечания по файлам, ничего не публикуется до нажатия «Одобрить» / «Отклонить». |
+| ![Главная](docs/screenshots/01-landing.png) | ![Черновик ревью PR](docs/screenshots/05-review.png) |
+| **Подбор репозитория.** Карточки: звёзды, язык, давность пуша, good first issues и открытые issues, CONTRIBUTING, лицензия, оценка. | **Уточнение поиска** («Поменьше проекты»): агент перестраивает запрос (`… stars:<50`), список обновляется. |
+| ![Кандидаты](docs/screenshots/02-candidates.png) | ![Уточнённый поиск](docs/screenshots/03-refined.png) |
+| **Good first issues** выбранного репозитория со ссылками; «К результатам поиска» возвращает к списку. | **Мобильная ширина** (390 px). |
+| ![Issues](docs/screenshots/04-issues.png) | ![Мобильный вид](docs/screenshots/06-mobile-candidates.png) |
+
 ## Стек
 
 FastAPI, LangGraph, свой MCP-сервер, RAG (Qdrant), LangSmith, Next.js.
