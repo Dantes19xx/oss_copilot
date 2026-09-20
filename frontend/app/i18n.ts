@@ -111,9 +111,9 @@ export const EVAL_STATS: Record<Lang, EvalStatsContent> = {
     eyebrow: "Measured, not vibes",
     stats: [
       { value: "30", label: "golden examples" },
-      { value: "0.90", label: "F1 score" },
+      { value: "0.88", label: "F1 score" },
       { value: "1.00", label: "recall" },
-      { value: "4.13/5", label: "LLM-judge score" },
+      { value: "3.73/5", label: "LLM-judge score" },
     ],
     caption: "From an automated eval run on a 30-example golden dataset.",
     captionLink: "Methodology & A/B experiment →",
@@ -122,9 +122,9 @@ export const EVAL_STATS: Record<Lang, EvalStatsContent> = {
     eyebrow: "Измерено, не на глаз",
     stats: [
       { value: "30", label: "golden-примеров" },
-      { value: "0.90", label: "F1-score" },
+      { value: "0.88", label: "F1-score" },
       { value: "1.00", label: "recall" },
-      { value: "4.13/5", label: "оценка LLM-judge" },
+      { value: "3.73/5", label: "оценка LLM-judge" },
     ],
     caption: "Автоматический прогон на golden dataset из 30 примеров.",
     captionLink: "Методология и A/B-эксперимент →",
