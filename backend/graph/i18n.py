@@ -87,8 +87,20 @@ _STRINGS: dict[str, dict[Language, str]] = {
     },
     "no_description": {"en": "no description", "ru": "без описания"},
     "select_instructions": {
-        "en": "Reply with the number of the repo to pursue, or 'skip'.",
-        "ru": "Ответьте номером репозитория, который вас заинтересовал, или 'skip'.",
+        "en": "Reply with the number of the repo to pursue, describe a change to refine the "
+        "search (e.g. 'Go instead', 'smaller projects'), or 'skip'.",
+        "ru": "Ответьте номером репозитория, который вас заинтересовал, опишите, что изменить "
+        "в поиске (например, «на Go», «поменьше проекты»), или 'skip'.",
+    },
+    "select_unrecognized": {
+        "en": "'{answer}' is not a valid choice. Reply with a number from the list, describe a "
+        "change to the search, or 'skip'.",
+        "ru": "'{answer}' — некорректный выбор. Ответьте номером из списка, опишите изменение "
+        "поиска или 'skip'.",
+    },
+    "refine_nothing_found": {
+        "en": "Nothing found for the adjusted search ({query}) — showing the previous results.",
+        "ru": "По уточнённому запросу ничего не найдено ({query}) — показываю прежние результаты.",
     },
     "clarify_instructions": {
         "en": "Answer in a few words, or 'skip' to let the agent search with what it has.",

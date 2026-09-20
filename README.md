@@ -119,6 +119,7 @@ repo_match:  [clarify_repo_match loop: до 2 уточняющих вопрос�
              -> [score_repo loop по кандидатам] -> present_candidates
              -> human_select --(выбор|skip)--> fetch_good_first_issues -> show_issues
                 --(back)--> human_select | (done)--> конец;  skip --> конец
+             human_select --(текст-уточнение)--> refine_search -> search_repos -> ... -> human_select
 ```
 
 - **Ветвление**: `intake` классифицирует свободный текст (structured output, gpt-4o-mini) и определяет, какая ветка выполняется; внутри review-ветки — есть ли изображения в описании PR.

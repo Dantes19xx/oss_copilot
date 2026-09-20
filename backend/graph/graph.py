@@ -11,8 +11,10 @@
   repo_match branch:
     [clarify_repo_match loop: up to 2 guiding questions] -> search_repos
     -> [score_repo loop over candidates] -> present_candidates
-    -> human_select --(picked|skip)--> fetch_good_first_issues -> show_issues
-       --(back)--> human_select | (done)--> END;  skip --> END
+    -> human_select --(picked)--> fetch_good_first_issues -> show_issues
+       --(back)--> human_select | (done)--> END
+    human_select --(correction text)--> refine_search -> search_repos -> ... -> human_select
+       (nothing found: back to human_select with the previous list);  skip --> END
 
 See PLAN.md section 1.1 for the design and PROGRESS.md for what's verified.
 """
@@ -26,6 +28,7 @@ from backend.graph.nodes_repo_match import (
     fetch_good_first_issues,
     human_select,
     present_candidates,
+    refine_search,
     route_after_clarify,
     route_after_human_select,
     route_after_score_repo,
@@ -68,6 +71,7 @@ _graph.add_node("merge_pr", merge_pr)
 _graph.add_node("discard", discard)
 
 _graph.add_node("clarify_repo_match", clarify_repo_match)
+_graph.add_node("refine_search", refine_search)
 _graph.add_node("search_repos", search_repos)
 _graph.add_node("score_repo", score_repo)
 _graph.add_node("present_candidates", present_candidates)
@@ -122,7 +126,7 @@ _graph.add_conditional_edges(
 _graph.add_conditional_edges(
     "search_repos",
     route_after_search,
-    {"score": "score_repo", "none": END},
+    {"score": "score_repo", "keep": "human_select", "none": END},
 )
 _graph.add_conditional_edges(
     "score_repo",
@@ -133,8 +137,9 @@ _graph.add_edge("present_candidates", "human_select")
 _graph.add_conditional_edges(
     "human_select",
     route_after_human_select,
-    {"issues": "fetch_good_first_issues", "end": END},
+    {"issues": "fetch_good_first_issues", "refine": "refine_search", "end": END},
 )
+_graph.add_edge("refine_search", "search_repos")
 _graph.add_edge("fetch_good_first_issues", "show_issues")
 _graph.add_conditional_edges(
     "show_issues",

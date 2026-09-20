@@ -3,7 +3,7 @@ from langgraph.types import interrupt
 
 from backend.graph.i18n import LANGUAGE_NAME, t
 from backend.graph.mcp_client import call_tool
-from backend.graph.schemas import ClarifyOutput
+from backend.graph.schemas import ClarifyOutput, RefineOutput
 from backend.graph.state import AgentState
 
 MAX_CLARIFY_TURNS = 2
@@ -101,16 +101,66 @@ def route_after_clarify(state: AgentState) -> str:
     return "search" if state.get("clarify_done") else "ask_again"
 
 
+REFINE_SYSTEM_PROMPT = """You adjust a GitHub repository search query after the developer saw \
+the first results and asked for a change. You'll see their original request, the follow-up \
+transcript (including earlier corrections), the search query that produced the results they \
+saw, and their new correction.
+
+Return the updated query in GitHub search qualifiers (language:, topic:, stars:>N, \
+archived:false, etc.). Apply the correction — it overrides anything in the current query it \
+contradicts (e.g. "on Go" replaces language:python; "smaller projects" lowers or caps stars) — \
+and keep everything else. If the correction is vague, interpret it in the most useful way; \
+never return an empty query."""
+
+
+async def refine_search(state: AgentState) -> dict:
+    refinement = state["refinement"]
+    history = state.get("clarify_history", [])
+    transcript = "\n".join(history) if history else "(none)"
+
+    llm = ChatOpenAI(model="gpt-4o-mini", temperature=0).with_structured_output(RefineOutput)
+    result: RefineOutput = await llm.ainvoke(
+        [
+            ("system", REFINE_SYSTEM_PROMPT),
+            (
+                "human",
+                f"Original request: {state['user_request']}\n\n"
+                f"Follow-up transcript:\n{transcript}\n\n"
+                f"Current search query: {state['search_query']}\n\n"
+                f"New correction: {refinement}",
+            ),
+        ]
+    )
+    # The correction joins the transcript so a later one ("actually, also add CLI") is
+    # interpreted against everything asked for so far, not just the latest message.
+    return {
+        "search_query": result.refined_query.strip() or state["search_query"],
+        "clarify_history": history + [f"Correction after seeing results: {refinement}"],
+        "refinement": None,
+    }
+
+
 async def search_repos(state: AgentState) -> dict:
     repos = await call_tool("search_github_repos", {"query": state["search_query"], "limit": 5})
     if not repos:
-        summary = t(state.get("language"), "no_repos_found", query=state["search_query"])
-        return {"candidates": [], "summary": summary}
+        message = t(state.get("language"), "no_repos_found", query=state["search_query"])
+        if state.get("scored_candidates"):
+            # A refinement matched nothing — keep the list the user already has instead of
+            # ending the session and throwing it away.
+            return {
+                "candidates": [],
+                "notice": t(state.get("language"), "refine_nothing_found", query=state["search_query"]),
+                # the next correction must build on the query behind the list still on screen
+                "search_query": state["shown_query"],
+            }
+        return {"candidates": [], "summary": message}
     return {"candidates": repos, "candidate_index": 0, "scored_candidates": []}
 
 
 def route_after_search(state: AgentState) -> str:
-    return "score" if state.get("candidates") else "none"
+    if state.get("candidates"):
+        return "score"
+    return "keep" if state.get("scored_candidates") else "none"
 
 
 async def score_repo(state: AgentState) -> dict:
@@ -154,33 +204,52 @@ async def present_candidates(state: AgentState) -> dict:
         for i, c in enumerate(ranked)
     ]
     summary = t(lang, "candidates_header") + "\n" + "\n".join(lines)
-    return {"scored_candidates": ranked, "summary": summary, "candidates_text": summary}
+    return {
+        "scored_candidates": ranked,
+        "summary": summary,
+        "candidates_text": summary,
+        "shown_query": state["search_query"],
+    }
+
+
+_SKIP_WORDS = {"skip", "пропустить"}
 
 
 async def human_select(state: AgentState) -> dict:
+    lang = state.get("language")
+    ranked = state["scored_candidates"]
     # candidates_text, not summary: fetch_good_first_issues overwrites summary with the
     # issues list, and "back" has to re-show the candidates, not the last repo's issues.
-    choice = interrupt(
-        {
-            "type": "repo_selection",
-            "candidates": state["candidates_text"],
-            "candidates_data": [_repo_view(c, i + 1) for i, c in enumerate(state["scored_candidates"])],
-            "max_fit_score": MAX_FIT_SCORE,
-            "instructions": t(state.get("language"), "select_instructions"),
-        }
-    )
-    ranked = state["scored_candidates"]
-    try:
-        index = int(str(choice).strip()) - 1
-    except ValueError:
-        index = -1
-    if 0 <= index < len(ranked):
-        return {"selected_repo": ranked[index]}
-    return {"selected_repo": None}
+    payload = {
+        "type": "repo_selection",
+        "candidates": state["candidates_text"],
+        "candidates_data": [_repo_view(c, i + 1) for i, c in enumerate(ranked)],
+        "max_fit_score": MAX_FIT_SCORE,
+        "query": state.get("shown_query"),
+        "instructions": t(lang, "select_instructions"),
+    }
+    if state.get("notice"):
+        payload["notice"] = state["notice"]
+
+    choice = interrupt(payload)
+    # A number picks a repo, "skip" ends, any other text is a correction to the search.
+    # Anything else (empty, a number outside the list) re-prompts — same rule as
+    # human_confirm/show_issues — rather than silently ending or silently re-searching.
+    while True:
+        text = str(choice).strip()
+        if text.isdigit() and 1 <= int(text) <= len(ranked):
+            return {"selected_repo": ranked[int(text) - 1], "refinement": None, "notice": None}
+        if text.lower() in _SKIP_WORDS:
+            return {"selected_repo": None, "refinement": None, "notice": None}
+        if text and not text.isdigit():
+            return {"selected_repo": None, "refinement": text, "notice": None}
+        choice = interrupt({**payload, "error": t(lang, "select_unrecognized", answer=text)})
 
 
 def route_after_human_select(state: AgentState) -> str:
-    return "issues" if state.get("selected_repo") else "end"
+    if state.get("selected_repo"):
+        return "issues"
+    return "refine" if state.get("refinement") else "end"
 
 
 async def fetch_good_first_issues(state: AgentState) -> dict:

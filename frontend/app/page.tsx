@@ -19,6 +19,8 @@ type InterruptPayload = {
   candidates?: string;
   candidates_data?: RepoView[];
   max_fit_score?: number;
+  query?: string;
+  notice?: string;
   issues?: string;
   issues_data?: IssueView[];
   repo?: RepoView;
@@ -274,6 +276,7 @@ export default function Home() {
   const [showStyleGuide, setShowStyleGuide] = useState(false);
   const [message, setMessage] = useState("");
   const [answer, setAnswer] = useState("");
+  const [refineText, setRefineText] = useState("");
   const [response, setResponse] = useState<AgentResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -363,6 +366,7 @@ export default function Home() {
       setResponse(result);
       recordHistory(message, result);
       setAnswer("");
+      setRefineText("");
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -376,16 +380,25 @@ export default function Home() {
     submitAnswer(answer.trim());
   }
 
+  function handleRefine(e: FormEvent) {
+    e.preventDefault();
+    const text = refineText.trim();
+    if (!text) return;
+    submitAnswer(text);
+  }
+
   function handleReset() {
     setResponse(null);
     setMessage("");
     setAnswer("");
+    setRefineText("");
     setError(null);
   }
 
   const payload = response?.payload;
   const kind = payload?.type;
   const candidates = kind === "repo_selection" ? candidateNumbers(payload?.candidates) : [];
+  const hasCards = kind === "repo_selection" && !!payload?.candidates_data?.length;
 
   const kickerLabel =
     kind === "review_confirmation"
@@ -575,6 +588,12 @@ export default function Home() {
                 <span>{payload.security_warning}</span>
               </div>
             )}
+            {payload?.notice && (
+              <div className="banner banner-warning">
+                <WarningIcon />
+                <span>{payload.notice}</span>
+              </div>
+            )}
             {payload?.error && (
               <div className="banner banner-error">
                 <WarningIcon />
@@ -587,14 +606,22 @@ export default function Home() {
             {kind === "clarifying_question" ? (
               <p className="question">{payload?.question}</p>
             ) : kind === "repo_selection" && payload?.candidates_data?.length ? (
-              <CandidateList
-                repos={payload.candidates_data}
-                maxScore={payload.max_fit_score ?? 0}
-                lang={lang}
-                ui={ui}
-                disabled={loading}
-                onSelect={(rank) => submitAnswer(String(rank))}
-              />
+              <>
+                {payload.query && (
+                  <p className="search-query">
+                    <span>{ui.searchQueryLabel}</span>
+                    <code>{payload.query}</code>
+                  </p>
+                )}
+                <CandidateList
+                  repos={payload.candidates_data}
+                  maxScore={payload.max_fit_score ?? 0}
+                  lang={lang}
+                  ui={ui}
+                  disabled={loading}
+                  onSelect={(rank) => submitAnswer(String(rank))}
+                />
+              </>
             ) : kind === "repo_issues" && payload?.repo ? (
               <IssuesView repo={payload.repo} issues={payload.issues_data ?? []} lang={lang} ui={ui} />
             ) : (
@@ -615,11 +642,33 @@ export default function Home() {
               </div>
             )}
 
-            {kind === "repo_selection" && payload?.candidates_data?.length ? (
-              <div className="quick-actions">
-                <button className="btn btn-ghost" disabled={loading} onClick={() => submitAnswer("skip")}>
-                  {ui.skip}
-                </button>
+            {hasCards ? (
+              <div className="refine">
+                <p className="refine-label">{ui.refineLabel}</p>
+                <div className="chip-row">
+                  {ui.refineSuggestions.map((text) => (
+                    <button key={text} className="chip" disabled={loading} onClick={() => submitAnswer(text)}>
+                      {text}
+                    </button>
+                  ))}
+                </div>
+                <form className="inline-form" onSubmit={handleRefine}>
+                  <input
+                    type="text"
+                    value={refineText}
+                    onChange={(e) => setRefineText(e.target.value)}
+                    placeholder={ui.refinePlaceholder}
+                    disabled={loading}
+                  />
+                  <button type="submit" className="btn btn-primary" disabled={loading || !refineText.trim()}>
+                    {loading ? <Dots /> : ui.refineSubmit}
+                  </button>
+                </form>
+                <div className="quick-actions">
+                  <button className="btn btn-ghost" disabled={loading} onClick={() => submitAnswer("skip")}>
+                    {ui.skip}
+                  </button>
+                </div>
               </div>
             ) : (
               kind === "repo_selection" &&
@@ -656,20 +705,24 @@ export default function Home() {
               </div>
             )}
 
-            <p className="instructions">{payload?.instructions}</p>
+            {!hasCards && (
+              <>
+                <p className="instructions">{payload?.instructions}</p>
 
-            <form className="inline-form" onSubmit={handleResume}>
-              <input
-                type="text"
-                value={answer}
-                onChange={(e) => setAnswer(e.target.value)}
-                placeholder={ui.answerPlaceholder}
-                required
-              />
-              <button type="submit" className="btn btn-ghost" disabled={loading || !answer.trim()}>
-                {loading ? <Dots /> : ui.send}
-              </button>
-            </form>
+                <form className="inline-form" onSubmit={handleResume}>
+                  <input
+                    type="text"
+                    value={answer}
+                    onChange={(e) => setAnswer(e.target.value)}
+                    placeholder={ui.answerPlaceholder}
+                    required
+                  />
+                  <button type="submit" className="btn btn-ghost" disabled={loading || !answer.trim()}>
+                    {loading ? <Dots /> : ui.send}
+                  </button>
+                </form>
+              </>
+            )}
           </section>
         )}
 

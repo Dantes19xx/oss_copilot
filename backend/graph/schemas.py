@@ -58,3 +58,13 @@ class ClarifyOutput(BaseModel):
         "(language:, topic:, stars:>N, etc.) built from everything learned so far. Required "
         "if ask_question is False.",
     )
+
+
+class RefineOutput(BaseModel):
+    """Applies a user's correction to an already-built repository search query."""
+
+    refined_query: str = Field(
+        description="The updated GitHub repository search query (GitHub search qualifiers: "
+        "language:, topic:, stars:>N, archived:false, etc.). Apply the user's correction and "
+        "keep every part of the current query the correction doesn't contradict."
+    )

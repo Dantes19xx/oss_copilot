@@ -1161,6 +1161,49 @@ input[type="file"]::file-selector-button:hover {
   }
 }
 
+.search-query {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5rem;
+  margin: 0 0 0.85rem;
+  color: var(--ink-3);
+  font-size: 0.78rem;
+}
+
+.search-query span {
+  font-family: var(--font-mono);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.search-query code {
+  padding: 0.15rem 0.5rem;
+  border-radius: 6px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  color: var(--ink-2);
+  font-family: var(--font-mono);
+  overflow-wrap: anywhere;
+}
+
+.refine {
+  margin-top: 1.1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--line);
+}
+
+.refine-label {
+  margin: 0 0 0.6rem;
+  color: var(--ink-2);
+  font-size: 0.88rem;
+  font-weight: 600;
+}
+
+.refine .chip-row {
+  margin: 0 0 0.75rem;
+}
+
 @media (max-width: 640px) {
   .mode-cards,
   .steps {

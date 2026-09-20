@@ -13,6 +13,11 @@ export const UI = {
     skip: "Skip",
     backToResults: "Back to results",
     done: "Done",
+    refineLabel: "Not quite right? Adjust the search",
+    refinePlaceholder: "e.g. on Go instead, smaller projects…",
+    refineSubmit: "Update search",
+    refineSuggestions: ["More popular", "Smaller projects", "Recently active", "Beginner-friendly"],
+    searchQueryLabel: "Search",
     selectRepo: "Choose",
     openOnGithub: "Open on GitHub",
     noDescription: "No description",
@@ -58,6 +63,11 @@ export const UI = {
     skip: "Пропустить",
     backToResults: "К результатам поиска",
     done: "Готово",
+    refineLabel: "Не то? Уточните поиск",
+    refinePlaceholder: "например: на Go, поменьше проекты…",
+    refineSubmit: "Обновить поиск",
+    refineSuggestions: ["Популярнее", "Поменьше проекты", "Недавно обновлялись", "Для новичков"],
+    searchQueryLabel: "Поиск",
     selectRepo: "Выбрать",
     openOnGithub: "Открыть на GitHub",
     noDescription: "Без описания",
@@ -91,7 +101,7 @@ export const UI = {
     historyClear: "Очистить",
     historyBack: "Назад",
   },
-} as const satisfies Record<Lang, Record<string, string>>;
+} as const satisfies Record<Lang, Record<string, string | readonly string[]>>;
 
 type Stat = { value: string; label: string };
 type EvalStatsContent = { eyebrow: string; stats: Stat[]; caption: string; captionLink: string };
@@ -141,7 +151,7 @@ export const ONBOARDING: Record<Lang, OnboardingContent> = {
       },
       {
         title: "Find a repo to contribute to",
-        body: "Describe your skills and interests. The agent may ask one or two quick follow-up questions to narrow things down, then ranks candidates by how contributor-friendly they actually are — not just star count. Pick a number to get real open good-first-issues, or Skip.",
+        body: "Describe your skills and interests. The agent may ask one or two quick follow-up questions to narrow things down, then ranks candidates by how contributor-friendly they actually are — not just star count. Pick a number to get real open good-first-issues, adjust the search if the list isn't quite right (\"on Go instead\", \"smaller projects\"), or Skip.",
       },
       {
         title: "Multimodal by default",
@@ -165,7 +175,7 @@ export const ONBOARDING: Record<Lang, OnboardingContent> = {
       },
       {
         title: "Подбор репозитория для контрибьюта",
-        body: "Опишите свои навыки и интересы. Агент может задать 1-2 коротких уточняющих вопроса, затем ранжирует кандидатов по реальной дружелюбности к новичкам — не по числу звёзд. Выберите номер, чтобы получить настоящие открытые good-first-issues, или нажмите Skip.",
+        body: "Опишите свои навыки и интересы. Агент может задать 1-2 коротких уточняющих вопроса, затем ранжирует кандидатов по реальной дружелюбности к новичкам — не по числу звёзд. Выберите номер, чтобы получить настоящие открытые good-first-issues, уточните поиск, если список не то («на Go», «поменьше проекты»), или нажмите Skip.",
       },
       {
         title: "Мультимодальность по умолчанию",

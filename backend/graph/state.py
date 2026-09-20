@@ -40,6 +40,9 @@ class AgentState(TypedDict, total=False):
     candidate_index: int
     scored_candidates: list[dict]
     candidates_text: str  # the ranked list shown at human_select, kept apart from `summary`
+    shown_query: str  # the search query that produced candidates_text
     selected_repo: dict | None
+    refinement: str | None  # free-text correction typed at human_select, consumed by refine_search
+    notice: str | None  # one-shot message shown with the next candidate list
     good_first_issues: list[dict]
     back_to_results: bool

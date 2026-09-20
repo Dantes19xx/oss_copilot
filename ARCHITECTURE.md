@@ -157,6 +157,7 @@ flowchart TB
         score_repo -->|done| present_candidates --> human_select[["human_select<br/>(interrupt)"]]
         human_select -->|picked| fetch_good_first_issues --> show_issues[["show_issues<br/>(interrupt)"]]
         show_issues -->|back| human_select
+        human_select -->|"correction text"| refine_search --> search_repos
         show_issues -->|done| END5(["END"])
         human_select -->|skip| END6(["END"])
     end
