@@ -11,7 +11,8 @@
   repo_match branch:
     [clarify_repo_match loop: up to 2 guiding questions] -> search_repos
     -> [score_repo loop over candidates] -> present_candidates
-    -> human_select --(picked|skip)--> fetch_good_first_issues | END
+    -> human_select --(picked|skip)--> fetch_good_first_issues -> show_issues
+       --(back)--> human_select | (done)--> END;  skip --> END
 
 See PLAN.md section 1.1 for the design and PROGRESS.md for what's verified.
 """
@@ -29,8 +30,10 @@ from backend.graph.nodes_repo_match import (
     route_after_human_select,
     route_after_score_repo,
     route_after_search,
+    route_after_show_issues,
     score_repo,
     search_repos,
+    show_issues,
 )
 from backend.graph.nodes_review import (
     aggregate_review,
@@ -70,6 +73,7 @@ _graph.add_node("score_repo", score_repo)
 _graph.add_node("present_candidates", present_candidates)
 _graph.add_node("human_select", human_select)
 _graph.add_node("fetch_good_first_issues", fetch_good_first_issues)
+_graph.add_node("show_issues", show_issues)
 
 _graph.set_entry_point("intake")
 _graph.add_conditional_edges(
@@ -131,6 +135,11 @@ _graph.add_conditional_edges(
     route_after_human_select,
     {"issues": "fetch_good_first_issues", "end": END},
 )
-_graph.add_edge("fetch_good_first_issues", END)
+_graph.add_edge("fetch_good_first_issues", "show_issues")
+_graph.add_conditional_edges(
+    "show_issues",
+    route_after_show_issues,
+    {"back": "human_select", "end": END},
+)
 
 review_app = _graph.compile(checkpointer=InMemorySaver())

@@ -12,6 +12,36 @@ MAX_CLARIFY_TURNS = 2
 # indefinitely on human input. Two follow-ups is enough to narrow "I know Python" into
 # a usable search without turning a quick request into an interrogation.
 
+CONTRIBUTING_BONUS = 2.0
+MAX_COUNTED_ISSUES = 10
+MAX_FIT_SCORE = CONTRIBUTING_BONUS + MAX_COUNTED_ISSUES * 0.5
+# Sent to the frontend so it can draw the fit score as a bar without duplicating the
+# scoring formula's constants on its side.
+
+
+def _repo_view(c: dict, rank: int | None = None) -> dict:
+    """Structured repo card for the frontend — the same data present_candidates renders
+    as plain text for the CLI, minus the string formatting."""
+    view = {
+        "full_name": c.get("full_name"),
+        "url": c.get("url") or f"https://github.com/{c.get('full_name')}",
+        "description": c.get("description"),
+        "stars": c.get("stars"),
+        "language": c.get("language"),
+        "open_issues": c.get("open_issues"),
+        "good_first_issues": c.get("good_first_issue_count", 0),
+        "license": c.get("license"),
+        "pushed_at": c.get("pushed_at"),
+        "has_contributing_guide": bool(c.get("has_contributing_guide")),
+        "archived": bool(c.get("archived")),
+        "fit_score": c.get("fit_score"),
+        "topics": (c.get("topics") or [])[:4],
+    }
+    if rank is not None:
+        view["rank"] = rank
+    return view
+
+
 CLARIFY_SYSTEM_PROMPT = """You help match a developer to an open-source repository worth \
 contributing to. You'll see their original request and, if any, a transcript of follow-up \
 questions you already asked and their answers.
@@ -93,8 +123,8 @@ async def score_repo(state: AgentState) -> dict:
 
     score = 0.0
     if health.get("has_contributing_guide"):
-        score += 2.0
-    score += min(health.get("good_first_issue_count", 0), 10) * 0.5
+        score += CONTRIBUTING_BONUS
+    score += min(health.get("good_first_issue_count", 0), MAX_COUNTED_ISSUES) * 0.5
     if health.get("archived"):
         score -= 100.0
 
@@ -118,19 +148,24 @@ async def present_candidates(state: AgentState) -> dict:
             full_name=c["full_name"],
             score=c["fit_score"],
             issues=c.get("good_first_issue_count", 0),
+            open=c.get("open_issues") or 0,
             desc=c.get("description") or t(lang, "no_description"),
         )
         for i, c in enumerate(ranked)
     ]
     summary = t(lang, "candidates_header") + "\n" + "\n".join(lines)
-    return {"scored_candidates": ranked, "summary": summary}
+    return {"scored_candidates": ranked, "summary": summary, "candidates_text": summary}
 
 
 async def human_select(state: AgentState) -> dict:
+    # candidates_text, not summary: fetch_good_first_issues overwrites summary with the
+    # issues list, and "back" has to re-show the candidates, not the last repo's issues.
     choice = interrupt(
         {
             "type": "repo_selection",
-            "candidates": state["summary"],
+            "candidates": state["candidates_text"],
+            "candidates_data": [_repo_view(c, i + 1) for i, c in enumerate(state["scored_candidates"])],
+            "max_fit_score": MAX_FIT_SCORE,
             "instructions": t(state.get("language"), "select_instructions"),
         }
     )
@@ -157,3 +192,31 @@ async def fetch_good_first_issues(state: AgentState) -> dict:
     header = t(lang, "selected_issues_header", full_name=selected["full_name"])
     body = "\n".join(lines) if lines else t(lang, "no_open_issues")
     return {"good_first_issues": issues, "summary": header + "\n" + body}
+
+
+_BACK_WORDS = {"back", "b", "назад"}
+_DONE_WORDS = {"done", "d", "finish", "готово"}
+
+
+async def show_issues(state: AgentState) -> dict:
+    lang = state.get("language")
+    payload = {
+        "type": "repo_issues",
+        "issues": state["summary"],
+        "repo": _repo_view(state["selected_repo"]),
+        "issues_data": [
+            {"number": i["number"], "title": i["title"], "url": i["html_url"]}
+            for i in state.get("good_first_issues", [])
+        ],
+        "instructions": t(lang, "issues_instructions"),
+    }
+    answer = interrupt(payload)
+    # Same rule as human_confirm: an unrecognized reply re-prompts instead of silently
+    # ending the session and throwing away the candidate list the user meant to go back to.
+    while str(answer).strip().lower() not in _BACK_WORDS | _DONE_WORDS:
+        answer = interrupt({**payload, "error": t(lang, "issues_unrecognized", answer=answer)})
+    return {"back_to_results": str(answer).strip().lower() in _BACK_WORDS}
+
+
+def route_after_show_issues(state: AgentState) -> str:
+    return "back" if state.get("back_to_results") else "end"

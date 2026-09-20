@@ -155,7 +155,9 @@ flowchart TB
         route3 -->|yes| score_repo
         score_repo -->|"loop: more candidates"| score_repo
         score_repo -->|done| present_candidates --> human_select[["human_select<br/>(interrupt)"]]
-        human_select -->|picked| fetch_good_first_issues --> END5(["END"])
+        human_select -->|picked| fetch_good_first_issues --> show_issues[["show_issues<br/>(interrupt)"]]
+        show_issues -->|back| human_select
+        show_issues -->|done| END5(["END"])
         human_select -->|skip| END6(["END"])
     end
 ```

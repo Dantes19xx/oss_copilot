@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import { detectDefaultLang, EVAL_STATS, Lang, LANDING, ONBOARDING, STYLE_GUIDE, UI } from "./i18n";
+import { CandidateList, IssuesView, IssueView, RepoView } from "./repo-views";
 
 const SHOW_EVAL_STATS = process.env.NEXT_PUBLIC_SHOW_EVAL_STATS === "true";
 const EVALS_URL = "https://github.com/Dantes19xx/oss_copilot/blob/main/EVALS.md";
@@ -16,6 +17,11 @@ type InterruptPayload = {
   pr?: string;
   draft_comment?: string;
   candidates?: string;
+  candidates_data?: RepoView[];
+  max_fit_score?: number;
+  issues?: string;
+  issues_data?: IssueView[];
+  repo?: RepoView;
   question?: string;
   instructions?: string;
   security_warning?: string;
@@ -386,9 +392,11 @@ export default function Home() {
       ? ui.kickerReview
       : kind === "repo_selection"
         ? ui.kickerRepo
-        : kind === "clarifying_question"
-          ? ui.kickerClarify
-          : ui.kickerWorking;
+        : kind === "repo_issues"
+          ? ui.kickerIssues
+          : kind === "clarifying_question"
+            ? ui.kickerClarify
+            : ui.kickerWorking;
 
   return (
     <div className="page">
@@ -578,8 +586,19 @@ export default function Home() {
 
             {kind === "clarifying_question" ? (
               <p className="question">{payload?.question}</p>
+            ) : kind === "repo_selection" && payload?.candidates_data?.length ? (
+              <CandidateList
+                repos={payload.candidates_data}
+                maxScore={payload.max_fit_score ?? 0}
+                lang={lang}
+                ui={ui}
+                disabled={loading}
+                onSelect={(rank) => submitAnswer(String(rank))}
+              />
+            ) : kind === "repo_issues" && payload?.repo ? (
+              <IssuesView repo={payload.repo} issues={payload.issues_data ?? []} lang={lang} ui={ui} />
             ) : (
-              <pre className="draft">{payload?.draft_comment ?? payload?.candidates}</pre>
+              <pre className="draft">{payload?.draft_comment ?? payload?.candidates ?? payload?.issues}</pre>
             )}
 
             {kind === "review_confirmation" && (
@@ -596,15 +615,35 @@ export default function Home() {
               </div>
             )}
 
-            {kind === "repo_selection" && candidates.length > 0 && (
-              <div className="chip-row">
-                {candidates.map((n) => (
-                  <button key={n} className="chip" disabled={loading} onClick={() => submitAnswer(String(n))}>
-                    #{n}
-                  </button>
-                ))}
-                <button className="chip" disabled={loading} onClick={() => submitAnswer("skip")}>
+            {kind === "repo_selection" && payload?.candidates_data?.length ? (
+              <div className="quick-actions">
+                <button className="btn btn-ghost" disabled={loading} onClick={() => submitAnswer("skip")}>
                   {ui.skip}
+                </button>
+              </div>
+            ) : (
+              kind === "repo_selection" &&
+              candidates.length > 0 && (
+                <div className="chip-row">
+                  {candidates.map((n) => (
+                    <button key={n} className="chip" disabled={loading} onClick={() => submitAnswer(String(n))}>
+                      #{n}
+                    </button>
+                  ))}
+                  <button className="chip" disabled={loading} onClick={() => submitAnswer("skip")}>
+                    {ui.skip}
+                  </button>
+                </div>
+              )
+            )}
+
+            {kind === "repo_issues" && (
+              <div className="quick-actions">
+                <button className="btn btn-primary" disabled={loading} onClick={() => submitAnswer("back")}>
+                  {ui.backToResults}
+                </button>
+                <button className="btn btn-ghost" disabled={loading} onClick={() => submitAnswer("done")}>
+                  {ui.done}
                 </button>
               </div>
             )}

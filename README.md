@@ -117,7 +117,8 @@ review:      fetch_diff --(есть скриншоты в описании PR?)-
 
 repo_match:  [clarify_repo_match loop: до 2 уточняющих вопросов] -> search_repos
              -> [score_repo loop по кандидатам] -> present_candidates
-             -> human_select --(выбор|skip)--> fetch_good_first_issues | конец
+             -> human_select --(выбор|skip)--> fetch_good_first_issues -> show_issues
+                --(back)--> human_select | (done)--> конец;  skip --> конец
 ```
 
 - **Ветвление**: `intake` классифицирует свободный текст (structured output, gpt-4o-mini) и определяет, какая ветка выполняется; внутри review-ветки — есть ли изображения в описании PR.

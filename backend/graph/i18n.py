@@ -82,8 +82,8 @@ _STRINGS: dict[str, dict[Language, str]] = {
     },
     "candidates_header": {"en": "Candidate repositories:", "ru": "Кандидаты:"},
     "candidate_line": {
-        "en": "{i}. {full_name} (fit score {score:.1f}, {issues} good-first-issues) — {desc}",
-        "ru": "{i}. {full_name} (оценка {score:.1f}, good-first-issues: {issues}) — {desc}",
+        "en": "{i}. {full_name} (fit score {score:.1f}, {issues} good-first-issues, {open} open issues) — {desc}",
+        "ru": "{i}. {full_name} (оценка {score:.1f}, good-first-issues: {issues}, открытых issues: {open}) — {desc}",
     },
     "no_description": {"en": "no description", "ru": "без описания"},
     "select_instructions": {
@@ -97,6 +97,14 @@ _STRINGS: dict[str, dict[Language, str]] = {
     "selected_issues_header": {
         "en": "Selected {full_name}. Good first issues:",
         "ru": "Выбран {full_name}. Открытые good-first-issue:",
+    },
+    "issues_instructions": {
+        "en": "Reply 'back' to return to the candidate list, or 'done' to finish.",
+        "ru": "Ответьте 'back', чтобы вернуться к списку кандидатов, или 'done', чтобы закончить.",
+    },
+    "issues_unrecognized": {
+        "en": "Unrecognized reply '{answer}'. Reply 'back' or 'done'.",
+        "ru": "Ответ '{answer}' не распознан. Ответьте 'back' или 'done'.",
     },
     "no_open_issues": {"en": "(none open right now)", "ru": "(сейчас открытых нет)"},
 }
