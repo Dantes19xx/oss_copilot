@@ -1,10 +1,5 @@
 # EVALS.md — Golden dataset, metrics, results
 
-Covers the mandatory ТЗ 2.3 eval requirements: golden dataset ≥30 examples, automated
-run, ≥2 metrics. The A/B experiment (also ТЗ 2.3) is a separate section below, added at
-the corresponding project stage — see [PROGRESS.md](PROGRESS.md) for what's implemented
-when.
-
 ## 1. What's being evaluated
 
 `backend/graph/nodes_review.review_file()` — the per-file review call the production
