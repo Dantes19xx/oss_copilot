@@ -5,6 +5,66 @@
 
 ---
 
+## Финальный чек-лист ТЗ (§6) — со ссылками на код
+
+Перепроверено 2026-09-24 по реальному коду (grep/подсчёт), не по памяти. Прод-бэкенд `/health` → `{"status":"ok"}`, фронтенд → HTTP 200.
+Ссылки с `#L…` ведут на конкретную строку (работают на GitHub и в IDE).
+
+- [x] **Собственный MCP-сервер с 2+ tool'ами** — 8 tool'ов в [backend/mcp_server/server.py](backend/mcp_server/server.py#L26):
+  [`get_pr_diff`](backend/mcp_server/server.py#L30),
+  [`get_pr_files`](backend/mcp_server/server.py#L49),
+  [`post_pr_comment`](backend/mcp_server/server.py#L66),
+  [`create_pr_review`](backend/mcp_server/server.py#L74),
+  [`merge_pull_request`](backend/mcp_server/server.py#L85),
+  [`get_good_first_issues`](backend/mcp_server/server.py#L94),
+  [`search_github_repos`](backend/mcp_server/server.py#L109),
+  [`get_repo_health`](backend/mcp_server/server.py#L128).
+  Граф вызывает их по настоящему MCP-протоколу: [backend/graph/mcp_client.py](backend/graph/mcp_client.py#L19) (`mcp.Client`). Обёртка GitHub API — [github_client.py](backend/mcp_server/github_client.py). Описание — [README → MCP-сервер](README.md#mcp-сервер).
+- [x] **Собственный Skill с SKILL.md** — [.claude/skills/code-review-checklist/SKILL.md](.claude/skills/code-review-checklist/SKILL.md#L1) (frontmatter `name` + `description` с триггерами "review this PR", "code review this diff", "check this MR"). Тот же чек-лист, что в промпте [`FILE_REVIEW_SYSTEM_PROMPT`](backend/graph/nodes_review.py). Описание — [README → Skill](README.md#skill).
+- [x] **LangGraph с многошаговым workflow** — [backend/graph/graph.py](backend/graph/graph.py#L59) (`StateGraph`):
+  - ветвления: [intake → review / repo_match / unclear](backend/graph/graph.py#L83), [vision или нет](backend/graph/graph.py#L90), [post / merge / discard](backend/graph/graph.py#L107);
+  - ограниченные циклы: [`analyze_file` → `analyze_file`](backend/graph/graph.py#L101) (≤ [`MAX_FILES = 10`](backend/graph/nodes_review.py#L21)), [`score_repo` → `score_repo`](backend/graph/graph.py#L131) (≤5 кандидатов, [`limit: 5`](backend/graph/nodes_repo_match.py#L144)), [`clarify_repo_match` → себя](backend/graph/graph.py#L121) (≤ [`MAX_CLARIFY_TURNS = 2`](backend/graph/nodes_repo_match.py#L9));
+  - human-in-the-loop (`interrupt()`): [`human_confirm`](backend/graph/nodes_review.py#L378), [`clarify_repo_match`](backend/graph/nodes_repo_match.py#L85), [`human_select`](backend/graph/nodes_repo_match.py#L234), [`show_issues`](backend/graph/nodes_repo_match.py#L282);
+  - циклы, управляемые человеком: [`human_select` → `refine_search` → `search_repos`](backend/graph/graph.py#L137), [`show_issues` → «назад» → `human_select`](backend/graph/graph.py#L144).
+  - Описание — [ARCHITECTURE.md §4](ARCHITECTURE.md#4-the-graphs-control-flow), [README → Граф](README.md#граф-langgraph-ветвления-циклы-human-in-the-loop).
+- [x] **RAG-пайплайн с обоснованным выбором компонентов** — [backend/rag/](backend/rag/):
+  chunking по markdown-заголовкам + fallback на fixed-window [500/50 токенов](backend/rag/chunking.py#L10) (`tiktoken`);
+  embeddings [`text-embedding-3-small`](backend/rag/embeddings.py#L8);
+  Qdrant, коллекция [`repo_docs`](backend/rag/vector_store.py#L15) с [фильтром по `repo`](backend/rag/vector_store.py#L60);
+  [retrieve.py](backend/rag/retrieve.py), [ingest.py](backend/rag/ingest.py), узел графа [`retrieve_style_context`](backend/graph/nodes_review.py#L96).
+  Обоснование — [README → RAG-пайплайн](README.md#rag-пайплайн), [ARCHITECTURE.md §6](ARCHITECTURE.md#6-key-decisions-and-why-cross-references-not-a-repeat). Reranker не делали (в ТЗ опционален).
+- [x] **Обработка документов** — [backend/rag/document_ingest.py](backend/rag/document_ingest.py#L38): [PDF через `pypdf`](backend/rag/document_ingest.py#L28), [DOCX через `python-docx`](backend/rag/document_ingest.py#L33), кладётся в ту же коллекцию Qdrant ([`ingest_document`](backend/rag/document_ingest.py#L47)). HTML-скрапинг не делали (в ТЗ — «либо»).
+- [x] **Мультимодальность** — [backend/graph/vision.py](backend/graph/vision.py#L37): картинки/gif из описания PR ([`extract_image_urls`](backend/graph/vision.py#L26)) → vision gpt-4o-mini. В графе — условный узел [`analyze_screenshots`](backend/graph/nodes_review.py#L86), [ветвление в graph.py](backend/graph/graph.py#L90).
+- [x] **LangSmith с реальными трейсами** — переменные `LANGSMITH_*` в [.env.example](.env.example#L10) (в локальном `.env` проект `oss_copilot`); все `ChatOpenAI`-вызовы трейсятся автоматически, embeddings — вручную через [`@traceable`](backend/rag/embeddings.py#L22). Дашборд: smith.langchain.com, проект `oss_copilot`. Описание — [README → Мониторинг](README.md#мониторинг-langsmith).
+- [x] **Golden dataset 10+ и автоматизированные evals** — [backend/evals/golden_dataset.py](backend/evals/golden_dataset.py#L22): 30 примеров (6 bug, 6 security, 5 missing_tests, 5 breaking_change, 8 clean). [run_evals.py](backend/evals/run_evals.py#L84): accuracy/precision/recall/F1 + [LLM-as-judge](backend/evals/run_evals.py#L51). Автозапуск в CI на каждый PR: [.github/workflows/ci.yml, job `evals`](.github/workflows/ci.yml#L32). Описание — [EVALS.md §2](EVALS.md#2-golden-dataset), [§3](EVALS.md#3-metrics).
+- [x] **A/B эксперимент с выводами** — [backend/evals/run_ab.py](backend/evals/run_ab.py#L31) (gpt-4o-mini vs gpt-4o, с подсчётом стоимости), результаты и выводы — [EVALS.md §7](EVALS.md#7-ab-experiment-gpt-4o-mini-vs-gpt-4o).
+- [x] **Обоснованный выбор LLM и гиперпараметров** —
+  модель: [PLAN.md §2 (строка 2.4)](PLAN.md#2-обязательные-модули-из-тз-и-как-они-закрываются), [ARCHITECTURE.md §6](ARCHITECTURE.md#6-key-decisions-and-why-cross-references-not-a-repeat), [§7](ARCHITECTURE.md#7-trade-offs-and-hypotheses-that-didnt-survive-contact), подтверждено A/B в [EVALS.md §7](EVALS.md#7-ab-experiment-gpt-4o-mini-vs-gpt-4o);
+  гиперпараметры: [run_temperature.py](backend/evals/run_temperature.py#L36) (0.0/0.2/0.7), применено в [nodes_review.py](backend/graph/nodes_review.py#L106) (temperature 0.0, `max_tokens=500`, `top_p` по умолчанию — с комментарием почему), обоснование — [EVALS.md §8](EVALS.md#8-hyperparameters-temperature-max_tokens-top_p).
+- [x] **Веб-фронтенд** — [frontend/](frontend/) (Next.js 16, App Router: [app/page.tsx](frontend/app/page.tsx), [app/repo-views.tsx](frontend/app/repo-views.tsx)), задеплоен на Vercel: https://oss-copilot-dmitriy-solo.vercel.app
+- [x] **GitHub-репозиторий с README и инструкцией запуска** — https://github.com/Dantes19xx/oss_copilot, [README.md → Запуск](README.md#запуск-локально), [скриншоты](README.md#скриншоты).
+- [x] **ARCHITECTURE.md или mindmap** — [ARCHITECTURE.md](ARCHITECTURE.md): 2 mermaid-диаграммы ([§2 System diagram](ARCHITECTURE.md#2-system-diagram), [§4 control flow](ARCHITECTURE.md#4-the-graphs-control-flow)), путь одного запроса — [§3](ARCHITECTURE.md#3-one-request-start-to-finish).
+- [x] **EVALS.md с метриками и результатами** — [EVALS.md](EVALS.md): датасет, метрики, результаты (§4), A/B (§7), гиперпараметры (§8), воспроизведение (§6).
+- [x] **Презентация** — [presentation/slides.html](presentation/slides.html) + [presentation/oss-copilot-slides.pdf](presentation/oss-copilot-slides.pdf) (15 страниц).
+- [x] **Развёрнутое демо или однокомандный запуск** — оба: прод (Vercel → Railway → Qdrant, [README → Деплой](README.md#деплой), [ARCHITECTURE.md §8](ARCHITECTURE.md#8-deployment-topology), [railway.json](railway.json)) и `docker-compose up` локально ([docker-compose.yml](docker-compose.yml)).
+
+### Обязательные технические требования (§2) — повторная проверка
+
+| § | Требование | Статус | Где |
+|---|---|---|---|
+| 2.1 | Оркестрация (LangGraph) с ветвлениями, циклами, human-in-the-loop | ✅ | см. пункт «LangGraph» выше |
+| 2.1 | Свой MCP-сервер, 2-3+ содержательных tool'а | ✅ 8 tool'ов | см. пункт «MCP» выше |
+| 2.1 | Свой Skill с SKILL.md, триггерами, валидной структурой | ✅ | см. пункт «Skill» выше |
+| 2.2 | RAG: chunking, embeddings, векторная БД, (reranker — опц.) | ✅ без reranker'а | см. пункт «RAG» выше |
+| 2.2 | Парсинг PDF / DOCX / HTML либо скрапинг | ✅ PDF + DOCX | см. пункт «Обработка документов» |
+| 2.2 | Мультимодальность, осмысленная | ✅ vision по скриншотам PR, влияет на итоговый комментарий | см. пункт «Мультимодальность» |
+| 2.3 | Трейсинг всех LLM-вызовов (LangSmith) | ✅ включая embeddings | см. пункт «LangSmith»; дашборд показать вживую |
+| 2.3 | Evals: ≥30 примеров, автоматизированный прогон, ≥2 метрики | ✅ ровно 30, CI | см. пункт «Golden dataset» |
+| 2.3 | A/B тест двух конфигураций с метриками и выводами | ✅ | см. пункт «A/B» |
+| 2.4 | Документированный выбор LLM (стоимость / латентность / качество) | ✅ | см. пункт «Выбор LLM» |
+| 2.4 | Подбор temperature, top_p, max_tokens с экспериментальным обоснованием | ✅ temperature — эксперимент; max_tokens — по замеренному usage; top_p — сознательно дефолт | см. пункт «гиперпараметры» |
+
+
 ## 2026-09-07
 
 - [x] Прочитано техническое_задание.md
